@@ -58,6 +58,23 @@ def get_stats():
 
     return jsonify(stats)
 
+@app.route('/api/scan/<scan_id>')
+def get_scan_details(scan_id):
+    """Get detailed information for a specific scan"""
+    if not HISTORY_FILE.exists():
+        return jsonify({"error": "No scan history"}), 404
+
+    with open(HISTORY_FILE) as f:
+        history = json.load(f)
+
+    # Find scan by ID
+    scan = next((s for s in history if s.get('scan_id') == scan_id), None)
+
+    if not scan:
+        return jsonify({"error": "Scan not found"}), 404
+
+    return jsonify(scan)
+
 def run_server():
     """Start the Flask web server"""
     import logging

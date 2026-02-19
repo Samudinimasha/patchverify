@@ -155,13 +155,11 @@
             padding: 15px;
             border-radius: 8px;
             margin-bottom: 10px;
-            transition: all 0.2s;
-            cursor: pointer;
+            transition: background 0.2s;
         }
 
         .history-item:hover {
             background: #f3f4f6;
-            transform: translateX(5px);
         }
 
         .risk-badge {
@@ -183,72 +181,6 @@
             color: #6b7280;
             padding: 40px;
         }
-
-        /* Modal styles */
-        .modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.7);
-            z-index: 1000;
-            overflow-y: auto;
-        }
-
-        .modal-content {
-            background: white;
-            max-width: 900px;
-            margin: 50px auto;
-            border-radius: 16px;
-            padding: 30px;
-            position: relative;
-        }
-
-        .modal-close {
-            position: absolute;
-            top: 20px;
-            right: 20px;
-            font-size: 2em;
-            cursor: pointer;
-            color: #6b7280;
-        }
-
-        .modal-close:hover {
-            color: #1f2937;
-        }
-
-        .cve-item {
-            background: #f9fafb;
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 15px;
-            border-left: 4px solid #667eea;
-        }
-
-        .cve-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 10px;
-        }
-
-        .cve-id {
-            font-weight: bold;
-            color: #1f2937;
-        }
-
-        .fixed-badge {
-            padding: 4px 12px;
-            border-radius: 12px;
-            font-size: 0.85em;
-            font-weight: bold;
-        }
-
-        .fixed-yes { background: #d1fae5; color: #065f46; }
-        .fixed-no { background: #fee2e2; color: #991b1b; }
-        .fixed-unknown { background: #f3f4f6; color: #6b7280; }
 
         @media (max-width: 768px) {
             .main-content {
@@ -300,14 +232,6 @@
                     <div class="no-data">No scan history available</div>
                 </div>
             </div>
-        </div>
-    </div>
-
-    <!-- Modal for CVE Details -->
-    <div id="cve-modal" class="modal">
-        <div class="modal-content">
-            <span class="modal-close" onclick="closeModal()">&times;</span>
-            <div id="modal-body"></div>
         </div>
     </div>
 
@@ -371,7 +295,7 @@
                     historyContent.innerHTML = '<div class="no-data">No scan history available</div>';
                 } else {
                     historyContent.innerHTML = history.map(item => `
-                        <div class="history-item" onclick="showScanDetails('${item.scan_id}')">
+                        <div class="history-item">
                             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                                 <strong>${item.app}</strong>
                                 <span class="risk-badge risk-${item.risk_label.toLowerCase()}">${item.risk_label}</span>
@@ -380,76 +304,13 @@
                                 ${item.old_version} → ${item.new_version}
                             </div>
                             <div style="color: #6b7280; font-size: 0.85em; margin-top: 5px;">
-                                Fixed: ${item.fixed}/${item.total} | Not Fixed: ${item.not_fixed} | Click for details
+                                Fixed: ${item.fixed}/${item.total} | Not Fixed: ${item.not_fixed} | Scan ID: ${item.scan_id}
                             </div>
                         </div>
                     `).join('');
                 }
             } catch (error) {
                 console.error('Error fetching history:', error);
-            }
-        }
-
-        // Show scan details in modal
-        async function showScanDetails(scanId) {
-            try {
-                const response = await fetch(`/api/scan/${scanId}`);
-                const scan = await response.json();
-
-                const modalBody = document.getElementById('modal-body');
-
-                let cveHtml = `
-                    <h2 style="margin-bottom: 20px;">${scan.app} ${scan.old_version} → ${scan.new_version}</h2>
-                    <div style="margin-bottom: 20px;">
-                        <p><strong>Scan ID:</strong> ${scan.scan_id}</p>
-                        <p><strong>Risk Score:</strong> ${scan.risk_score}/100 (${scan.risk_label})</p>
-                        <p><strong>Total CVEs:</strong> ${scan.total}</p>
-                        <p><strong>Fixed:</strong> ${scan.fixed} | <strong>Not Fixed:</strong> ${scan.not_fixed} | <strong>Unconfirmed:</strong> ${scan.unconfirmed}</p>
-                    </div>
-                    <h3>CVE Details:</h3>
-                `;
-
-                if (scan.cve_details && scan.cve_details.length > 0) {
-                    cveHtml += scan.cve_details.map(cve => `
-                        <div class="cve-item">
-                            <div class="cve-header">
-                                <span class="cve-id">${cve.id}</span>
-                                <span class="fixed-badge fixed-${cve.fixed === true ? 'yes' : cve.fixed === false ? 'no' : 'unknown'}">
-                                    ${cve.fixed === true ? '✓ Fixed' : cve.fixed === false ? '✗ Not Fixed' : '? Unknown'}
-                                </span>
-                            </div>
-                            <div style="color: #6b7280; font-size: 0.9em; margin-bottom: 8px;">
-                                <strong>Severity:</strong> ${cve.severity} ${cve.score ? `(${cve.score})` : ''}
-                            </div>
-                            <div style="color: #374151; margin-bottom: 8px;">
-                                ${cve.description}
-                            </div>
-                            <div style="color: #6b7280; font-size: 0.85em; font-style: italic;">
-                                ${cve.detail}
-                            </div>
-                        </div>
-                    `).join('');
-                } else {
-                    cveHtml += '<p style="color: #6b7280; text-align: center; padding: 20px;">No CVE details available</p>';
-                }
-
-                modalBody.innerHTML = cveHtml;
-                document.getElementById('cve-modal').style.display = 'block';
-            } catch (error) {
-                console.error('Error fetching scan details:', error);
-            }
-        }
-
-        // Close modal
-        function closeModal() {
-            document.getElementById('cve-modal').style.display = 'none';
-        }
-
-        // Close modal when clicking outside
-        window.onclick = function(event) {
-            const modal = document.getElementById('cve-modal');
-            if (event.target == modal) {
-                closeModal();
             }
         }
 

@@ -114,10 +114,14 @@ def run_scan(app_name, old_version, new_version, github_token=None, skip_probe=F
     max_possible = 0
     for cve in old_cves:
         if cve["score"]:
-            score_val = float(cve["score"])
-            max_possible += 10
-            if not check_version_fixed(cve, new_version)["fixed"]:
-                total_score += score_val
+            try:
+                score_val = float(cve["score"])
+                max_possible += 10
+                if not check_version_fixed(cve, new_version)["fixed"]:
+                    total_score += score_val
+            except (ValueError, TypeError):
+                # Skip non-numeric scores (CVSS vectors)
+                pass
 
     # Normalize to 0-100
     risk_score = 0

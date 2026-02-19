@@ -101,12 +101,12 @@ Examples:
 
 
 def _check_registered():
-    from cli.auth import is_registered
+    from cli.auth import is_registered, setup_flow
     from cli.config import C
     if not is_registered():
-        print(f"\n{C.YELLOW}Device not registered. Run setup first:{C.RESET}")
-        print(f"  {C.BOLD}patchverify --setup{C.RESET}\n")
-        sys.exit(1)
+        print(f"\n{C.YELLOW}First time running PatchVerify!{C.RESET}\n")
+        setup_flow()
+        print(f"\n{C.GREEN}Setup complete! Continuing with your request...{C.RESET}\n")
 
 
 def _get_config_token():

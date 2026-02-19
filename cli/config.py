@@ -18,6 +18,10 @@ CONFIG_DIR = Path.home() / ".patchverify"
 CONFIG_FILE = CONFIG_DIR / "config.json"
 HISTORY_FILE = CONFIG_DIR / "history.json"
 
+# API Endpoints
+NVD_BASE = "https://services.nvd.nist.gov/rest/json/cves/2.0"
+OSV_BASE = "https://api.osv.dev/v1/query"
+
 def ensure_config_dir():
     """Ensure config directory exists"""
     CONFIG_DIR.mkdir(parents=True, exist_ok=True)

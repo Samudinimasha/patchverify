@@ -65,3 +65,7 @@ def _write_stream(data):
     """Write stream data"""
     with open(STREAM_FILE, 'w') as f:
         json.dump(data, f, indent=2)
+
+def emit(message):
+    """Print a message to console (used by CVE module)"""
+    print(message)

@@ -61,10 +61,24 @@ def get_stats():
 def run_server():
     """Start the Flask web server"""
     print(f"\n{C.CYAN}{C.BOLD}PatchVerify — Web Dashboard{C.RESET}\n")
-    print(f"Starting server at {C.BOLD}http://localhost:5000{C.RESET}")
+    print(f"Starting server at:")
+    print(f"  {C.BOLD}http://localhost:8080{C.RESET}")
+    print(f"  {C.BOLD}https://localhost:8443{C.RESET} (with self-signed cert)")
     print(f"\n{C.GRAY}Press Ctrl+C to stop{C.RESET}\n")
 
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    # Try HTTPS with self-signed certificate
+    try:
+        import ssl
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.check_hostname = False
+        context.verify_mode = ssl.CERT_NONE
+
+        # Generate adhoc certificate
+        app.run(host='0.0.0.0', port=8443, debug=True, ssl_context='adhoc')
+    except Exception as e:
+        # Fallback to HTTP if HTTPS fails
+        print(f"{C.YELLOW}HTTPS failed ({e}), falling back to HTTP{C.RESET}\n")
+        app.run(host='0.0.0.0', port=8080, debug=True)
 
 if __name__ == '__main__':
     run_server()

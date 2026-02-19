@@ -9,6 +9,7 @@ setup(
     author="PatchVerify Team",
     python_requires=">=3.8",
     packages=find_packages(),
+    py_modules=['main'],  # Include main.py as a module
     install_requires=[
         "flask>=3.0.0",
         "requests>=2.31.0",

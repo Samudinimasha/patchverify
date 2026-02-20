@@ -7,6 +7,7 @@ import subprocess
 import sys
 import tempfile
 import os
+import shutil
 import tracemalloc
 from cli.config import C
 from cli.streamer import emit
@@ -15,6 +16,24 @@ from cli.streamer import emit
 PROBES = {
     "buffer_overflow": {
         "description": "Sending oversized input (10,000 chars) to common parsing functions",
+        "node_code": """\
+const pkgName = process.argv[2];
+let mod;
+try { mod = require(pkgName); } catch(e) { process.stdout.write('IMPORT_ERROR\\n'); process.exit(0); }
+const oversized = 'A'.repeat(10000);
+let crashed = false;
+const fns = Object.keys(mod).filter(k => typeof mod[k] === 'function' && !k.startsWith('_'));
+for (const fn of fns) {
+  try { mod[fn](oversized); }
+  catch(e) {
+    if (!(e instanceof TypeError)) {
+      process.stdout.write('CRASH:' + fn + ':' + e.constructor.name + '\\n');
+      crashed = true; break;
+    }
+  }
+}
+if (!crashed) process.stdout.write('HANDLED\\n');
+""",
         "python_code": """
 import sys
 import importlib
@@ -49,6 +68,24 @@ if not crashed:
     },
     "memory_leak": {
         "description": "Running 500 iterations and monitoring memory growth via tracemalloc",
+        "node_code": """\
+const pkgName = process.argv[2];
+let mod;
+try { mod = require(pkgName); } catch(e) { process.stdout.write('IMPORT_ERROR\\n'); process.exit(0); }
+const fns = Object.keys(mod).filter(k => typeof mod[k] === 'function' && !k.startsWith('_')).slice(0, 3);
+const before = process.memoryUsage().heapUsed;
+for (let i = 0; i < 500; i++) {
+  for (const fn of fns) { try { mod[fn](); } catch(e) {} }
+}
+if (global.gc) global.gc();
+const after = process.memoryUsage().heapUsed;
+const growth = after - before;
+if (growth > 10 * 1024 * 1024) {
+  process.stdout.write('LEAK:' + growth + '\\n');
+} else {
+  process.stdout.write('STABLE:' + growth + '\\n');
+}
+""",
         "python_code": """
 import sys
 import importlib
@@ -88,6 +125,33 @@ else:
     },
     "input_validation": {
         "description": "Testing with boundary inputs: empty string, null bytes, SQL patterns",
+        "node_code": """\
+const pkgName = process.argv[2];
+let mod;
+try { mod = require(pkgName); } catch(e) { process.stdout.write('IMPORT_ERROR\\n'); process.exit(0); }
+const malicious = ['', '\\x00'.repeat(100), "' OR '1'='1", '<script>alert(1)</script>', '../../../etc/passwd', '\\n\\r\\t'.repeat(100)];
+const fns = Object.keys(mod).filter(k => typeof mod[k] === 'function' && !k.startsWith('_')).slice(0, 5);
+const unhandled = [];
+for (const inp of malicious) {
+  for (const fn of fns) {
+    try {
+      const result = mod[fn](inp);
+      if (typeof result === 'string' && (result.includes('<script>') || result.includes("OR '1'='1"))) {
+        unhandled.push(fn + ':passthrough');
+      }
+    } catch(e) {
+      if (!(e instanceof TypeError || e instanceof RangeError)) {
+        unhandled.push(fn + ':' + e.constructor.name);
+      }
+    }
+  }
+}
+if (unhandled.length > 0) {
+  process.stdout.write('UNHANDLED:' + unhandled.slice(0,3).join(',') + '\\n');
+} else {
+  process.stdout.write('VALIDATED\\n');
+}
+""",
         "python_code": """
 import sys
 import importlib
@@ -131,6 +195,34 @@ else:
     },
     "integer_overflow": {
         "description": "Testing with MAX_INT and boundary values",
+        "node_code": """\
+const pkgName = process.argv[2];
+let mod;
+try { mod = require(pkgName); } catch(e) { process.stdout.write('IMPORT_ERROR\\n'); process.exit(0); }
+const MAX_SAFE = Number.MAX_SAFE_INTEGER;
+const boundary = [MAX_SAFE, MAX_SAFE + 1, -MAX_SAFE - 1, 0, -1];
+const fns = Object.keys(mod).filter(k => typeof mod[k] === 'function' && !k.startsWith('_')).slice(0, 5);
+const overflows = [];
+for (const val of boundary) {
+  for (const fn of fns) {
+    try {
+      const result = mod[fn](val);
+      if (typeof result === 'number' && result < 0 && val > 0) {
+        overflows.push(fn + ':wrapped');
+      }
+    } catch(e) {
+      if (!(e instanceof TypeError || e instanceof RangeError)) {
+        overflows.push(fn + ':' + e.constructor.name);
+      }
+    }
+  }
+}
+if (overflows.length > 0) {
+  process.stdout.write('OVERFLOW:' + overflows.slice(0,3).join(',') + '\\n');
+} else {
+  process.stdout.write('HANDLED\\n');
+}
+""",
         "python_code": """
 import sys
 import importlib
@@ -167,6 +259,32 @@ else:
     },
     "denial_of_service": {
         "description": "Testing with inputs designed to cause hangs or excessive computation",
+        "node_code": """\
+const pkgName = process.argv[2];
+let mod;
+try { mod = require(pkgName); } catch(e) { process.stdout.write('IMPORT_ERROR\\n'); process.exit(0); }
+// Kill process if still running after 5 seconds
+const timer = setTimeout(() => { process.stdout.write('TIMEOUT\\n'); process.exit(0); }, 5000);
+const dosInputs = ['A'.repeat(100000), '('.repeat(1000) + ')'.repeat(1000), '{'.repeat(500) + '}'.repeat(500)];
+const fns = Object.keys(mod).filter(k => typeof mod[k] === 'function' && !k.startsWith('_')).slice(0, 3);
+const issues = [];
+for (const inp of dosInputs) {
+  for (const fn of fns) {
+    try { mod[fn](inp); }
+    catch(e) {
+      if (!(e instanceof TypeError || e instanceof RangeError)) {
+        issues.push(fn + ':' + e.constructor.name);
+      }
+    }
+  }
+}
+clearTimeout(timer);
+if (issues.length > 0) {
+  process.stdout.write('ISSUE:' + issues.slice(0,3).join(',') + '\\n');
+} else {
+  process.stdout.write('HANDLED\\n');
+}
+""",
         "python_code": """
 import sys
 import importlib
@@ -210,15 +328,8 @@ else:
 def run_probe(package_name: str, version: str, bug_class: str, ecosystem: str) -> dict:
     """
     Run a behavioral probe for a specific bug class against a package version.
-    Installs the package version in a temp venv and runs the probe script.
-    Only works for PyPI packages.
+    Supports PyPI (Python) and npm (Node.js) packages.
     """
-    if ecosystem != "PyPI":
-        return {
-            "ran":    False,
-            "reason": f"Behavioral probing only supported for PyPI packages (ecosystem: {ecosystem})."
-        }
-
     probe = PROBES.get(bug_class)
     if not probe:
         return {
@@ -228,6 +339,19 @@ def run_probe(package_name: str, version: str, bug_class: str, ecosystem: str) -
 
     emit(f"    {C.GRAY}→ Probe: {probe['description']}{C.RESET}")
 
+    if ecosystem == "PyPI":
+        return _run_python_probe(package_name, version, bug_class, probe)
+    elif ecosystem == "npm":
+        return _run_node_probe(package_name, version, bug_class, probe)
+    else:
+        return {
+            "ran":    False,
+            "reason": f"Behavioral probing not supported for ecosystem '{ecosystem}'."
+        }
+
+
+def _run_python_probe(package_name: str, version: str, bug_class: str, probe: dict) -> dict:
+    """Run a Python behavioral probe against a PyPI package version."""
     with tempfile.TemporaryDirectory() as tmpdir:
         # Write probe script
         probe_script = os.path.join(tmpdir, "probe.py")
@@ -257,6 +381,68 @@ def run_probe(package_name: str, version: str, bug_class: str, ecosystem: str) -
                 [sys.executable, probe_script, package_name],
                 capture_output=True, text=True,
                 timeout=30, env=env
+            )
+            output = result.stdout.strip()
+            return _interpret_probe_output(output, bug_class, version)
+        except subprocess.TimeoutExpired:
+            return {
+                "ran":     True,
+                "result":  "TIMEOUT",
+                "message": "Probe timed out (>30s) — possible hang or DoS vulnerability.",
+                "passed":  False,
+            }
+        except Exception as e:
+            return {
+                "ran":    False,
+                "reason": f"Probe execution error: {e}"
+            }
+
+
+def _run_node_probe(package_name: str, version: str, bug_class: str, probe: dict) -> dict:
+    """Run a Node.js behavioral probe against an npm package version."""
+    # Check node is available
+    node_bin = shutil.which("node")
+    npm_bin  = shutil.which("npm")
+    if not node_bin or not npm_bin:
+        return {
+            "ran":    False,
+            "reason": "node/npm not found in PATH — cannot run Node.js probes."
+        }
+
+    node_code = probe.get("node_code")
+    if not node_code:
+        return {
+            "ran":    False,
+            "reason": f"No Node.js probe defined for bug class '{bug_class}'."
+        }
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Write probe script
+        probe_script = os.path.join(tmpdir, "probe.js")
+        with open(probe_script, 'w') as f:
+            f.write(node_code)
+
+        # Install the specific version into tmpdir
+        install_result = subprocess.run(
+            [npm_bin, "install", f"{package_name}@{version}", "--prefix", tmpdir, "--quiet"],
+            capture_output=True, text=True, timeout=120
+        )
+
+        if install_result.returncode != 0:
+            return {
+                "ran":    False,
+                "reason": f"Could not install {package_name}@{version} for probing."
+            }
+
+        # Run probe with NODE_PATH pointing to installed modules
+        env = os.environ.copy()
+        env["NODE_PATH"] = os.path.join(tmpdir, "node_modules")
+
+        try:
+            result = subprocess.run(
+                [node_bin, probe_script, package_name],
+                capture_output=True, text=True,
+                timeout=30, env=env, cwd=tmpdir
             )
             output = result.stdout.strip()
             return _interpret_probe_output(output, bug_class, version)

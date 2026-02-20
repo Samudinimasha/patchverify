@@ -4,17 +4,25 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime
 
+# Import the real SMTP helpers and config loader from auth
+try:
+    import sys
+    import os
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+    from auth import load_config, _deobfuscate
+    _AUTH_AVAILABLE = True
+except Exception:
+    _AUTH_AVAILABLE = False
+
+
 def send_scan_complete_email(email, scan_result):
     """
-    Send email notification when scan completes
-
-    Args:
-        email: Recipient email address
-        scan_result: Dict containing scan results
+    Send email notification when scan completes.
+    Uses SMTP credentials saved during patchverify --setup.
+    Falls back to console log if no credentials are configured.
     """
     subject = f"PatchVerify Scan Complete: {scan_result['app']} {scan_result['old_version']} → {scan_result['new_version']}"
 
-    # Create HTML email body
     html_body = f"""
     <html>
       <body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -58,15 +66,23 @@ def send_scan_complete_email(email, scan_result):
     </html>
     """
 
-    # For now, just log that email would be sent
-    # In production, you'd configure SMTP settings
+    # Try to send via SMTP using saved credentials from --setup
+    if _AUTH_AVAILABLE:
+        try:
+            config = load_config()
+            smtp_cfg = config.get("smtp", {})
+            if smtp_cfg and smtp_cfg.get("host") and smtp_cfg.get("user"):
+                _send_smtp_email(email, subject, html_body, smtp_cfg)
+                return
+        except Exception as e:
+            print(f"\n[Email] SMTP send failed: {e}")
+
+    # Fallback: log to console when no credentials are configured
     print(f"\n[Email] Would send to {email}:")
     print(f"Subject: {subject}")
     print(f"Risk Level: {scan_result.get('risk_label', 'NONE')}")
     print(f"Fixed: {scan_result.get('fixed', 0)}/{scan_result.get('total', 0)}\n")
 
-    # TODO: Uncomment and configure for production
-    # _send_smtp_email(email, subject, html_body)
 
 def _get_risk_color(risk_level):
     """Get color for risk level"""
@@ -79,25 +95,29 @@ def _get_risk_color(risk_level):
     }
     return colors.get(risk_level, "#6b7280")
 
-def _send_smtp_email(to_email, subject, html_body):
+
+def _send_smtp_email(to_email, subject, html_body, smtp_cfg):
     """
-    Send email via SMTP (configure for production)
+    Send email via SMTP using credentials from ~/.patchverify/config.json.
+    Credentials are saved by `patchverify --setup`.
     """
-    # Configure these settings
-    SMTP_SERVER = "smtp.gmail.com"
-    SMTP_PORT = 587
-    SENDER_EMAIL = "patchverify@example.com"
-    SENDER_PASSWORD = "your-app-password"
+    smtp_server   = smtp_cfg.get("host", "smtp.gmail.com")
+    smtp_port     = int(smtp_cfg.get("port", 587))
+    sender_email  = smtp_cfg.get("user", "")
+    sender_password = _deobfuscate(smtp_cfg.get("pass", "")) if _AUTH_AVAILABLE else smtp_cfg.get("pass", "")
+
+    if not sender_email or not sender_password:
+        raise ValueError("SMTP credentials incomplete — run `patchverify --setup` to configure.")
 
     msg = MIMEMultipart('alternative')
     msg['Subject'] = subject
-    msg['From'] = SENDER_EMAIL
+    msg['From'] = sender_email
     msg['To'] = to_email
 
     html_part = MIMEText(html_body, 'html')
     msg.attach(html_part)
 
-    with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+    with smtplib.SMTP(smtp_server, smtp_port) as server:
         server.starttls()
-        server.login(SENDER_EMAIL, SENDER_PASSWORD)
+        server.login(sender_email, sender_password)
         server.send_message(msg)

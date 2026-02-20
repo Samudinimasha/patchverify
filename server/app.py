@@ -87,24 +87,11 @@ def run_server():
     print(f"{C.CYAN}{C.BOLD}║   PatchVerify Web Dashboard          ║{C.RESET}")
     print(f"{C.CYAN}{C.BOLD}╚═══════════════════════════════════════╝{C.RESET}\n")
     print(f"  🌐 Dashboard: {C.BOLD}http://localhost:8080{C.RESET}")
-    print(f"  🔒 Secure:    {C.BOLD}https://localhost:8443{C.RESET}")
     print(f"\n  {C.GREEN}✓ Server running{C.RESET}")
     print(f"  {C.GRAY}Press Ctrl+C to stop{C.RESET}\n")
     print(f"{C.GRAY}{'─'*45}{C.RESET}\n")
 
-    # Try HTTPS with self-signed certificate
-    try:
-        import ssl
-        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-        context.check_hostname = False
-        context.verify_mode = ssl.CERT_NONE
-
-        # Generate adhoc certificate
-        app.run(host='0.0.0.0', port=8443, debug=False, ssl_context='adhoc')
-    except Exception as e:
-        # Fallback to HTTP if HTTPS fails
-        print(f"{C.YELLOW}HTTPS failed, using HTTP instead{C.RESET}\n")
-        app.run(host='0.0.0.0', port=8080, debug=False)
+    app.run(host='0.0.0.0', port=8080, debug=False)
 
 if __name__ == '__main__':
     run_server()

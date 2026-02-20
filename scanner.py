@@ -183,7 +183,7 @@ def run_scan(app_name: str, old_version: str, new_version: str,
 
         # Signal 3: Behavioral probe
         probe_result = {"ran": False, "reason": "Not applicable."}
-        if not skip_probe and ecosystem == "PyPI" and bug_class:
+        if not skip_probe and ecosystem in ("PyPI", "npm") and bug_class:
             emit(f"  {C.GRAY}Probe      : Running {bug_class} probe...{C.RESET}")
             # Run on new version (should pass) and old version (should fail)
             new_probe = run_probe(app_name, new_version, bug_class, ecosystem)

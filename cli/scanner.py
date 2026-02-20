@@ -7,8 +7,9 @@ from datetime import datetime
 import uuid
 import time
 
-# Import CVE module from parent directory
-sys.path.insert(0, str(__file__).rsplit('/', 2)[0])
+# Import CVE module from parent directory (works on Windows and Unix)
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from cve import query_nvd, query_osv, check_version_fixed, detect_ecosystem
 
 def run_scan(app_name, old_version, new_version, github_token=None, skip_probe=False):

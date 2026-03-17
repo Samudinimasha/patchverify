@@ -15,6 +15,7 @@ setup(
         "requests>=2.31.0",
         "PyJWT>=2.8.0",
         "click>=8.1.0",
+        "packaging>=23.0",
     ],
     entry_points={
         "console_scripts": [

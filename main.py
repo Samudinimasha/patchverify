@@ -95,6 +95,9 @@ Examples:
         if args.json:
             print(json.dumps(result, indent=2, default=str))
 
+        from cli.config import C
+        print(f"  {C.CYAN}Dashboard live at: http://localhost:8080{C.RESET}")
+        print(f"  {C.GRAY}Press Ctrl+C to exit{C.RESET}\n")
         return
 
     # No command given
@@ -122,7 +125,7 @@ def _ensure_server_running():
         from server.app import app
         app.run(host='0.0.0.0', port=8080, debug=False, use_reloader=False)
 
-    t = threading.Thread(target=_run, daemon=True)
+    t = threading.Thread(target=_run, daemon=False)
     t.start()
 
     # Wait up to 3 seconds for the server to be ready

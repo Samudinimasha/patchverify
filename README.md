@@ -27,7 +27,6 @@ git clone https://github.com/Samudinimasha/patchverify.git
 cd patchverify
 python -m venv .venv
 .venv\Scripts\activate
-pip install -r requirements.txt
 pip install -e .
 ```
 
@@ -38,7 +37,6 @@ git clone https://github.com/Samudinimasha/patchverify.git
 cd patchverify
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
 pip install -e .
 ```
 
@@ -81,7 +79,7 @@ patchverify --app flask --old 2.3.0 --new 3.0.0 --token YOUR_GITHUB_TOKEN
 REM View past scan history
 patchverify --history
 
-REM Start web dashboard (then open http://localhost:8080)
+REM Start web dashboard manually (auto-starts on every scan)
 patchverify --serve
 
 REM Show help
@@ -99,7 +97,7 @@ patchverify --help
 | `--json` | Print results as raw JSON |
 | `--token` | GitHub API token (optional, prevents rate limiting) |
 | `--history` | Show all past scans with risk scores |
-| `--serve` | Start the local web dashboard at http://localhost:8080 |
+| `--serve` | Start the web dashboard manually (auto-starts on every scan) |
 | `--setup` | Re-run first-time email OTP registration |
 
 ---
@@ -190,13 +188,17 @@ patchverify --app lodash --old 4.17.20 --new 4.17.21 --json
 
 ## Web Dashboard
 
+The dashboard starts automatically in the background whenever you run a scan — no separate command needed. Once started it keeps running independently, even after the terminal is closed.
+
+Open your browser and go to: **http://localhost:8080**
+
+The dashboard persists between scans and across terminal sessions. It is only stopped if you restart your machine (in which case the next scan auto-starts it again).
+
+To start the dashboard without running a scan:
+
 ```cmd
 patchverify --serve
 ```
-
-Then open your browser and go to: **http://localhost:8080**
-
-Leave the CMD/terminal window running while using the browser. Press `Ctrl+C` to stop.
 
 ---
 

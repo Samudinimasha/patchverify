@@ -67,6 +67,7 @@ Examples:
             sys.exit(1)
 
         _check_registered()
+        _ensure_server_running()
 
         # Get GitHub token from args or env or config
         github_token = (
@@ -98,6 +99,41 @@ Examples:
 
     # No command given
     parser.print_help()
+
+
+def _ensure_server_running():
+    """Start the web dashboard in a background thread if not already running."""
+    import socket
+    import threading
+    import time
+    from cli.config import C
+
+    # Check if something is already listening on port 8080
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.settimeout(0.5)
+        already_up = s.connect_ex(('127.0.0.1', 8080)) == 0
+
+    if already_up:
+        return
+
+    def _run():
+        import logging
+        logging.getLogger('werkzeug').setLevel(logging.ERROR)
+        from server.app import app
+        app.run(host='0.0.0.0', port=8080, debug=False, use_reloader=False)
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+
+    # Wait up to 3 seconds for the server to be ready
+    for _ in range(30):
+        time.sleep(0.1)
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(0.2)
+            if s.connect_ex(('127.0.0.1', 8080)) == 0:
+                break
+
+    print(f"  {C.CYAN}Dashboard: http://localhost:8080{C.RESET}  {C.GRAY}(auto-started){C.RESET}\n")
 
 
 def _check_registered():

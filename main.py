@@ -96,8 +96,7 @@ Examples:
             print(json.dumps(result, indent=2, default=str))
 
         from cli.config import C
-        print(f"  {C.CYAN}Dashboard live at: http://localhost:8080{C.RESET}")
-        print(f"  {C.GRAY}Press Ctrl+C to exit{C.RESET}\n")
+        print(f"  {C.CYAN}Dashboard: http://localhost:8080{C.RESET}\n")
         return
 
     # No command given
@@ -105,38 +104,55 @@ Examples:
 
 
 def _ensure_server_running():
-    """Start the web dashboard in a background thread if not already running."""
+    """Start the dashboard as a detached background process (survives terminal close)."""
     import socket
-    import threading
+    import subprocess
     import time
+    from pathlib import Path
     from cli.config import C
 
-    # Check if something is already listening on port 8080
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.settimeout(0.5)
-        already_up = s.connect_ex(('127.0.0.1', 8080)) == 0
+    pid_file = Path.home() / '.patchverify' / 'server.pid'
 
-    if already_up:
+    # Check if already listening on port 8080
+    def _is_up():
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(0.5)
+            return s.connect_ex(('127.0.0.1', 8080)) == 0
+
+    if _is_up():
         return
 
-    def _run():
-        import logging
-        logging.getLogger('werkzeug').setLevel(logging.ERROR)
-        from server.app import app
-        app.run(host='0.0.0.0', port=8080, debug=False, use_reloader=False)
+    # Locate the repo root (where server/app.py lives)
+    repo_root = Path(__file__).resolve().parent
 
-    t = threading.Thread(target=_run, daemon=False)
-    t.start()
+    kwargs = dict(
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        cwd=str(repo_root),
+    )
+    if sys.platform == 'win32':
+        kwargs['creationflags'] = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+    else:
+        kwargs['start_new_session'] = True  # detach from terminal on Mac/Linux
 
-    # Wait up to 3 seconds for the server to be ready
-    for _ in range(30):
+    proc = subprocess.Popen(
+        [sys.executable, '-c',
+         'import logging; logging.getLogger("werkzeug").setLevel(logging.ERROR); '
+         'from server.app import app; app.run(host="0.0.0.0", port=8080, debug=False, use_reloader=False)'],
+        **kwargs
+    )
+
+    # Save PID so we can check it next time
+    pid_file.parent.mkdir(parents=True, exist_ok=True)
+    pid_file.write_text(str(proc.pid))
+
+    # Wait up to 4 seconds for the server to be ready
+    for _ in range(40):
         time.sleep(0.1)
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.settimeout(0.2)
-            if s.connect_ex(('127.0.0.1', 8080)) == 0:
-                break
+        if _is_up():
+            break
 
-    print(f"  {C.CYAN}Dashboard: http://localhost:8080{C.RESET}  {C.GRAY}(auto-started){C.RESET}\n")
+    print(f"  {C.CYAN}Dashboard: http://localhost:8080{C.RESET}  {C.GRAY}(running in background){C.RESET}\n")
 
 
 def _check_registered():

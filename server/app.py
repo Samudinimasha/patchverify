@@ -79,9 +79,14 @@ def run_server():
     """Start the Flask web server"""
     import logging
 
-    # Reduce Flask logging verbosity
+    # Suppress all werkzeug output including bad-request noise
     log = logging.getLogger('werkzeug')
     log.setLevel(logging.ERROR)
+    logging.getLogger('werkzeug').addFilter(
+        type('_BadReq', (logging.Filter,), {
+            'filter': staticmethod(lambda r: 'Bad' not in r.getMessage())
+        })()
+    )
 
     print(f"\n{C.CYAN}{C.BOLD}╔═══════════════════════════════════════╗{C.RESET}")
     print(f"{C.CYAN}{C.BOLD}║   PatchVerify Web Dashboard          ║{C.RESET}")

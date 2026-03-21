@@ -58,28 +58,48 @@ We'll register your device and verify your email via OTP.
         print(f"  {C.RED}Invalid email address.{C.RESET}")
         return False
 
-    print(f"\n  {C.BOLD}SMTP Configuration{C.RESET} {C.GRAY}(optional — for OTP verification and scan notifications){C.RESET}")
-    print(f"  {C.GRAY}Gmail: smtp.gmail.com:587  |  Outlook: smtp.office365.com:587{C.RESET}")
-    print(f"  {C.GRAY}Gmail requires an App Password — myaccount.google.com → Security → App Passwords{C.RESET}")
-    print(f"  {C.GRAY}Press Enter to skip SMTP and register without email verification.{C.RESET}\n")
-
-    smtp_host = input(f"  SMTP host (or Enter to skip): ").strip()
-    smtp_cfg = {}
+    # Auto-detect SMTP settings from email domain
+    smtp_host, smtp_port = _detect_smtp(email)
 
     if smtp_host:
-        smtp_port_str = input(f"  SMTP port [{C.GRAY}587{C.RESET}]: ").strip() or "587"
-        smtp_user = input(f"  SMTP username [{C.GRAY}{email}{C.RESET}]: ").strip() or email
-        smtp_pass = getpass.getpass(f"  SMTP password (App Password for Gmail): ")
+        domain = email.split("@")[-1].lower()
+        if domain == "gmail.com":
+            print(f"\n  {C.GRAY}Gmail detected.{C.RESET}")
+            print(f"  {C.GRAY}You need a Gmail App Password (not your normal password).{C.RESET}")
+            print(f"  {C.GRAY}Get one at: myaccount.google.com → Security → App Passwords{C.RESET}\n")
+        else:
+            print(f"\n  {C.GRAY}Auto-detected SMTP: {smtp_host}:{smtp_port}{C.RESET}\n")
 
+        smtp_pass = getpass.getpass(f"  Email password (App Password for Gmail): ")
+        smtp_user = email
+    else:
+        # Unknown provider — ask manually
+        print(f"\n  {C.GRAY}Could not auto-detect SMTP for {email}.{C.RESET}")
+        print(f"  {C.GRAY}Enter your SMTP details or press Enter to skip verification.{C.RESET}\n")
+        smtp_host_input = input(f"  SMTP host (or Enter to skip): ").strip()
+        if not smtp_host_input:
+            print(f"  {C.YELLOW}Skipping email verification — registering without SMTP.{C.RESET}")
+            smtp_host = None
+            smtp_pass = ""
+            smtp_user = email
+            smtp_port = 587
+        else:
+            smtp_host = smtp_host_input
+            smtp_port = int(input(f"  SMTP port [587]: ").strip() or "587")
+            smtp_user = email
+            smtp_pass = getpass.getpass(f"  SMTP password: ")
+
+    smtp_cfg = {}
+    if smtp_host and smtp_pass:
         otp = str(random.randint(100000, 999999))
         print(f"\n  {C.GRAY}Sending OTP to {email}...{C.RESET}")
 
-        sent = _send_otp(email, otp, smtp_host, int(smtp_port_str), smtp_user, smtp_pass)
+        sent = _send_otp(email, otp, smtp_host, smtp_port, smtp_user, smtp_pass)
 
         if sent:
             print(f"  {C.GREEN}✓ OTP sent — check your inbox (and spam folder){C.RESET}")
         else:
-            print(f"  {C.YELLOW}SMTP send failed. Your OTP is: {C.BOLD}{otp}{C.RESET}")
+            print(f"  {C.YELLOW}Send failed. Your OTP is: {C.BOLD}{otp}{C.RESET}")
 
         entered = input(f"\n  {C.BOLD}Enter the OTP:{C.RESET} ").strip()
         if entered != otp:
@@ -89,12 +109,10 @@ We'll register your device and verify your email via OTP.
         print(f"  {C.GREEN}✓ OTP verified.{C.RESET}")
         smtp_cfg = {
             "host": smtp_host,
-            "port": int(smtp_port_str),
+            "port": smtp_port,
             "user": smtp_user,
             "pass": _obfuscate(smtp_pass),
         }
-    else:
-        print(f"  {C.YELLOW}Skipping email verification — registering without SMTP.{C.RESET}")
 
     # Generate device ID and token
     device_id = str(uuid.uuid4())
@@ -166,6 +184,22 @@ Scan ID: {result.get('scan_id', '')}
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
+
+def _detect_smtp(email):
+    """Return (host, port) for known email providers, or (None, 587) for unknown."""
+    domain = email.split("@")[-1].lower() if "@" in email else ""
+    known = {
+        "gmail.com":       ("smtp.gmail.com", 587),
+        "googlemail.com":  ("smtp.gmail.com", 587),
+        "outlook.com":     ("smtp.office365.com", 587),
+        "hotmail.com":     ("smtp.office365.com", 587),
+        "live.com":        ("smtp.office365.com", 587),
+        "yahoo.com":       ("smtp.mail.yahoo.com", 587),
+        "icloud.com":      ("smtp.mail.me.com", 587),
+        "me.com":          ("smtp.mail.me.com", 587),
+    }
+    return known.get(domain, (None, 587))
+
 
 def _send_otp(to, otp, host, port, user, password):
     subject = "PatchVerify — Your One-Time Password"

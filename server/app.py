@@ -1,5 +1,5 @@
 """Flask web server for PatchVerify dashboard"""
-from flask import Flask, jsonify, send_from_directory
+from flask import Flask, jsonify, send_from_directory, request
 import json
 from cli.config import C, HISTORY_FILE
 from cli.streamer import STREAM_FILE
@@ -73,6 +73,26 @@ def get_profile():
         })
     except Exception:
         return jsonify({"email": "Not configured", "device_id": "", "smtp_configured": False})
+
+
+@app.route('/api/profile', methods=['DELETE'])
+def delete_account():
+    """Delete registered account and all scan history"""
+    try:
+        from cli.config import CONFIG_FILE, CONFIG_DIR
+        import shutil
+        # Remove config file
+        if CONFIG_FILE.exists():
+            CONFIG_FILE.unlink()
+        # Remove scan history
+        if HISTORY_FILE.exists():
+            HISTORY_FILE.unlink()
+        # Remove stream file
+        if STREAM_FILE.exists():
+            STREAM_FILE.unlink()
+        return jsonify({"status": "deleted"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route('/api/scan/<scan_id>')

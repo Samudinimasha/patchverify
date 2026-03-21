@@ -58,34 +58,43 @@ We'll register your device and verify your email via OTP.
         print(f"  {C.RED}Invalid email address.{C.RESET}")
         return False
 
-    print(f"\n  {C.BOLD}SMTP Configuration{C.RESET} {C.GRAY}(needed to send your OTP){C.RESET}")
-    print(f"  {C.GRAY}Gmail users: use an App Password — myaccount.google.com → Security → App Passwords{C.RESET}")
-    print(f"  {C.GRAY}Gmail: smtp.gmail.com:587  |  Outlook: smtp.office365.com:587{C.RESET}\n")
+    print(f"\n  {C.BOLD}SMTP Configuration{C.RESET} {C.GRAY}(optional — for OTP verification and scan notifications){C.RESET}")
+    print(f"  {C.GRAY}Gmail: smtp.gmail.com:587  |  Outlook: smtp.office365.com:587{C.RESET}")
+    print(f"  {C.GRAY}Gmail requires an App Password — myaccount.google.com → Security → App Passwords{C.RESET}")
+    print(f"  {C.GRAY}Press Enter to skip SMTP and register without email verification.{C.RESET}\n")
 
-    smtp_host = input(f"  SMTP host [{C.GRAY}smtp.gmail.com{C.RESET}]: ").strip() or "smtp.gmail.com"
-    smtp_port_str = input(f"  SMTP port [{C.GRAY}587{C.RESET}]: ").strip() or "587"
-    smtp_user = input(f"  SMTP username [{C.GRAY}{email}{C.RESET}]: ").strip() or email
-    smtp_pass = getpass.getpass(f"  SMTP password (app password): ")
+    smtp_host = input(f"  SMTP host (or Enter to skip): ").strip()
+    smtp_cfg = {}
 
-    # Generate OTP
-    otp = str(random.randint(100000, 999999))
-    print(f"\n  {C.GRAY}Sending OTP to {email}...{C.RESET}")
+    if smtp_host:
+        smtp_port_str = input(f"  SMTP port [{C.GRAY}587{C.RESET}]: ").strip() or "587"
+        smtp_user = input(f"  SMTP username [{C.GRAY}{email}{C.RESET}]: ").strip() or email
+        smtp_pass = getpass.getpass(f"  SMTP password (App Password for Gmail): ")
 
-    sent = _send_otp(email, otp, smtp_host, int(smtp_port_str), smtp_user, smtp_pass)
+        otp = str(random.randint(100000, 999999))
+        print(f"\n  {C.GRAY}Sending OTP to {email}...{C.RESET}")
 
-    if sent:
-        print(f"  {C.GREEN}✓ OTP sent to {email}{C.RESET}")
+        sent = _send_otp(email, otp, smtp_host, int(smtp_port_str), smtp_user, smtp_pass)
+
+        if sent:
+            print(f"  {C.GREEN}✓ OTP sent — check your inbox (and spam folder){C.RESET}")
+        else:
+            print(f"  {C.YELLOW}SMTP send failed. Your OTP is: {C.BOLD}{otp}{C.RESET}")
+
+        entered = input(f"\n  {C.BOLD}Enter the OTP:{C.RESET} ").strip()
+        if entered != otp:
+            print(f"  {C.RED}Incorrect OTP. Setup failed.{C.RESET}")
+            return False
+
+        print(f"  {C.GREEN}✓ OTP verified.{C.RESET}")
+        smtp_cfg = {
+            "host": smtp_host,
+            "port": int(smtp_port_str),
+            "user": smtp_user,
+            "pass": _obfuscate(smtp_pass),
+        }
     else:
-        print(f"  {C.YELLOW}Could not send via SMTP. Check your credentials above.{C.RESET}")
-        print(f"  {C.YELLOW}For testing only, your OTP is: {C.BOLD}{otp}{C.RESET}")
-
-    entered = input(f"\n  {C.BOLD}Enter the OTP:{C.RESET} ").strip()
-
-    if entered != otp:
-        print(f"  {C.RED}Incorrect OTP. Setup failed.{C.RESET}")
-        return False
-
-    print(f"  {C.GREEN}✓ OTP verified.{C.RESET}")
+        print(f"  {C.YELLOW}Skipping email verification — registering without SMTP.{C.RESET}")
 
     # Generate device ID and token
     device_id = str(uuid.uuid4())
@@ -95,14 +104,10 @@ We'll register your device and verify your email via OTP.
         "email":      email,
         "device_id":  device_id,
         "token":      token,
-        "smtp": {
-            "host": smtp_host,
-            "port": int(smtp_port_str),
-            "user": smtp_user,
-            "pass": _obfuscate(smtp_pass),
-        },
         "registered": datetime.datetime.utcnow().isoformat(),
     }
+    if smtp_cfg:
+        config["smtp"] = smtp_cfg
     save_config(config)
 
     print(f"""

@@ -242,6 +242,92 @@
         .badge-smtp   { background: #dbeafe; color: #1e40af; }
         .badge-nosmtp { background: #f3f4f6; color: #6b7280; }
 
+        .btn-delete {
+            margin-left: auto;
+            padding: 8px 18px;
+            border: 2px solid #fca5a5;
+            background: transparent;
+            color: #dc2626;
+            border-radius: 8px;
+            font-size: 0.85em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-delete:hover {
+            background: #fee2e2;
+        }
+
+        .confirm-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.6);
+            z-index: 2000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .confirm-overlay.active { display: flex; }
+
+        .confirm-box {
+            background: white;
+            border-radius: 16px;
+            padding: 35px 40px;
+            max-width: 420px;
+            width: 90%;
+            text-align: center;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+
+        .confirm-box h3 {
+            font-size: 1.3em;
+            color: #1f2937;
+            margin-bottom: 12px;
+        }
+
+        .confirm-box p {
+            color: #6b7280;
+            font-size: 0.95em;
+            margin-bottom: 25px;
+            line-height: 1.5;
+        }
+
+        .confirm-actions {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+        }
+
+        .btn-cancel {
+            padding: 10px 24px;
+            border: 2px solid #e5e7eb;
+            background: transparent;
+            color: #374151;
+            border-radius: 8px;
+            font-size: 0.9em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-cancel:hover { background: #f3f4f6; }
+
+        .btn-confirm-delete {
+            padding: 10px 24px;
+            border: none;
+            background: #dc2626;
+            color: white;
+            border-radius: 8px;
+            font-size: 0.9em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-confirm-delete:hover { background: #b91c1c; }
+
         /* Modal styles */
         .modal {
             display: none;
@@ -333,6 +419,19 @@
                 <span class="profile-badge badge-active" id="badge-registered" style="display:none">✓ Registered</span>
                 <span class="profile-badge badge-smtp"   id="badge-smtp"       style="display:none">✉ Email notifications on</span>
                 <span class="profile-badge badge-nosmtp" id="badge-nosmtp"     style="display:none">✉ No SMTP configured</span>
+            </div>
+            <button class="btn-delete" onclick="showDeleteConfirm()">Delete Account</button>
+        </div>
+
+        <!-- Delete confirmation overlay -->
+        <div class="confirm-overlay" id="delete-overlay">
+            <div class="confirm-box">
+                <h3>Delete Account?</h3>
+                <p>This will remove your registered email, device ID, and all scan history permanently. You will need to run <strong>patchverify --setup</strong> again to re-register.</p>
+                <div class="confirm-actions">
+                    <button class="btn-cancel" onclick="hideDeleteConfirm()">Cancel</button>
+                    <button class="btn-confirm-delete" onclick="confirmDelete()">Yes, Delete</button>
+                </div>
             </div>
         </div>
 
@@ -522,6 +621,37 @@
             const modal = document.getElementById('cve-modal');
             if (event.target == modal) {
                 closeModal();
+            }
+        }
+
+        // Delete account flow
+        function showDeleteConfirm() {
+            document.getElementById('delete-overlay').classList.add('active');
+        }
+
+        function hideDeleteConfirm() {
+            document.getElementById('delete-overlay').classList.remove('active');
+        }
+
+        async function confirmDelete() {
+            try {
+                const res = await fetch('/api/profile', { method: 'DELETE' });
+                const data = await res.json();
+                if (data.status === 'deleted') {
+                    hideDeleteConfirm();
+                    document.getElementById('profile-email').textContent = 'Account deleted';
+                    document.getElementById('profile-meta').textContent = 'Run patchverify --setup to re-register';
+                    document.getElementById('badge-registered').style.display = 'none';
+                    document.getElementById('badge-smtp').style.display = 'none';
+                    document.getElementById('badge-nosmtp').style.display = 'none';
+                    document.getElementById('total-scans').textContent = '0';
+                    document.getElementById('critical-findings').textContent = '0';
+                    document.getElementById('total-fixed').textContent = '0';
+                    document.getElementById('total-vulns').textContent = '0';
+                    document.getElementById('history-content').innerHTML = '<div class="no-data">No scan history available</div>';
+                }
+            } catch (error) {
+                console.error('Delete failed:', error);
             }
         }
 

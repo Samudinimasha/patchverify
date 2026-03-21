@@ -184,6 +184,64 @@
             padding: 40px;
         }
 
+        .profile-panel {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 25px 30px;
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            margin-bottom: 30px;
+            display: flex;
+            align-items: center;
+            gap: 25px;
+            flex-wrap: wrap;
+        }
+
+        .profile-avatar {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.6em;
+            flex-shrink: 0;
+        }
+
+        .profile-info {
+            flex: 1;
+        }
+
+        .profile-email {
+            font-size: 1.1em;
+            font-weight: 600;
+            color: #1f2937;
+            margin-bottom: 4px;
+        }
+
+        .profile-meta {
+            font-size: 0.85em;
+            color: #6b7280;
+        }
+
+        .profile-badges {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .profile-badge {
+            padding: 5px 14px;
+            border-radius: 20px;
+            font-size: 0.8em;
+            font-weight: 600;
+        }
+
+        .badge-active { background: #d1fae5; color: #065f46; }
+        .badge-smtp   { background: #dbeafe; color: #1e40af; }
+        .badge-nosmtp { background: #f3f4f6; color: #6b7280; }
+
         /* Modal styles */
         .modal {
             display: none;
@@ -263,6 +321,20 @@
             <h1>🔐 PatchVerify Dashboard</h1>
             <p class="subtitle">Real-time patch verification and vulnerability tracking</p>
         </header>
+
+        <!-- Profile Panel -->
+        <div class="profile-panel" id="profile-panel">
+            <div class="profile-avatar">👤</div>
+            <div class="profile-info">
+                <div class="profile-email" id="profile-email">Loading...</div>
+                <div class="profile-meta" id="profile-meta">Device ID: —</div>
+            </div>
+            <div class="profile-badges">
+                <span class="profile-badge badge-active" id="badge-registered" style="display:none">✓ Registered</span>
+                <span class="profile-badge badge-smtp"   id="badge-smtp"       style="display:none">✉ Email notifications on</span>
+                <span class="profile-badge badge-nosmtp" id="badge-nosmtp"     style="display:none">✉ No SMTP configured</span>
+            </div>
+        </div>
 
         <div class="stats-grid">
             <div class="stat-card">
@@ -453,10 +525,36 @@
             }
         }
 
+        // Fetch and update profile panel
+        async function updateProfile() {
+            try {
+                const response = await fetch('/api/profile');
+                const p = await response.json();
+                document.getElementById('profile-email').textContent = p.email || 'Not configured';
+                const shortId = p.device_id ? p.device_id.split('-')[0] + '...' : '—';
+                const regDate = p.registered ? new Date(p.registered).toLocaleDateString() : '';
+                document.getElementById('profile-meta').textContent =
+                    `Device ID: ${shortId}` + (regDate ? `  ·  Registered: ${regDate}` : '');
+                if (p.device_id) {
+                    document.getElementById('badge-registered').style.display = 'inline-block';
+                }
+                if (p.smtp_configured) {
+                    document.getElementById('badge-smtp').style.display = 'inline-block';
+                    document.getElementById('badge-nosmtp').style.display = 'none';
+                } else {
+                    document.getElementById('badge-nosmtp').style.display = 'inline-block';
+                    document.getElementById('badge-smtp').style.display = 'none';
+                }
+            } catch (error) {
+                document.getElementById('profile-email').textContent = 'Not configured';
+            }
+        }
+
         // Initial load
         updateStats();
         updateStream();
         updateHistory();
+        updateProfile();
 
         // Auto-refresh every 2 seconds
         setInterval(() => {
@@ -464,6 +562,9 @@
             updateStream();
             updateHistory();
         }, 2000);
+
+        // Profile refreshes less often
+        setInterval(updateProfile, 30000);
     </script>
 </body>
 </html>

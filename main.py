@@ -29,13 +29,14 @@ Examples:
         """
     )
 
-    parser.add_argument("--setup",    action="store_true", help="First-time setup: register device via email OTP")
-    parser.add_argument("--serve",    action="store_true", help="Start the web dashboard server")
-    parser.add_argument("--history",  action="store_true", help="Show past scan history")
-    parser.add_argument("--app",      type=str,            help="App/package name to scan")
-    parser.add_argument("--old",      type=str,            help="Old (previous) version number")
-    parser.add_argument("--new",      type=str,            help="New (updated) version number")
-    parser.add_argument("--token",    type=str,            help="GitHub personal access token (optional, increases rate limits)")
+    parser.add_argument("--setup",           action="store_true", help="First-time setup: register device via email OTP")
+    parser.add_argument("--serve",           action="store_true", help="Start the web dashboard server")
+    parser.add_argument("--history",         action="store_true", help="Show past scan history")
+    parser.add_argument("--install-service", action="store_true", help="Install dashboard as a background service (auto-starts on login)")
+    parser.add_argument("--app",      type=str, help="App/package name to scan")
+    parser.add_argument("--old",      type=str, help="Old (previous) version number")
+    parser.add_argument("--new",      type=str, help="New (updated) version number")
+    parser.add_argument("--token",    type=str, help="GitHub personal access token (optional, increases rate limits)")
     parser.add_argument("--no-probe", action="store_true", help="Skip behavioral probing (faster)")
     parser.add_argument("--json",     action="store_true", help="Output results as JSON")
 
@@ -45,6 +46,11 @@ Examples:
     if args.setup:
         from cli.auth import setup_flow
         setup_flow()
+        return
+
+    # ── Install as background service ──────────────────────────────────────
+    if args.install_service:
+        _install_service()
         return
 
     # ── Serve dashboard ────────────────────────────────────────────────────
@@ -153,6 +159,78 @@ def _ensure_server_running():
             break
 
     print(f"  {C.CYAN}Dashboard: http://localhost:8080{C.RESET}  {C.GRAY}(running in background){C.RESET}\n")
+
+
+def _install_service():
+    """Install the dashboard server as a background service that starts on login."""
+    from pathlib import Path
+    from cli.config import C
+
+    repo_root = Path(__file__).resolve().parent
+    python_exe = sys.executable
+
+    if sys.platform == 'darwin':
+        plist_dir = Path.home() / 'Library' / 'LaunchAgents'
+        plist_dir.mkdir(parents=True, exist_ok=True)
+        plist_path = plist_dir / 'com.patchverify.server.plist'
+        plist_content = f"""<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.patchverify.server</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>{python_exe}</string>
+        <string>-c</string>
+        <string>import logging; logging.getLogger("werkzeug").setLevel(logging.ERROR); from server.app import app; app.run(host="0.0.0.0", port=8080, debug=False, use_reloader=False)</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>{repo_root}</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/tmp/patchverify-server.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/patchverify-server.log</string>
+</dict>
+</plist>"""
+        plist_path.write_text(plist_content)
+
+        import subprocess
+        # Unload first in case it was already loaded
+        subprocess.run(['launchctl', 'unload', str(plist_path)],
+                       capture_output=True)
+        result = subprocess.run(['launchctl', 'load', str(plist_path)],
+                                capture_output=True, text=True)
+
+        if result.returncode == 0:
+            print(f"\n  {C.GREEN}✓ Service installed and started.{C.RESET}")
+            print(f"  Dashboard runs at {C.CYAN}http://localhost:8080{C.RESET} automatically on every login.")
+            print(f"  {C.GRAY}To remove: launchctl unload {plist_path}{C.RESET}\n")
+        else:
+            print(f"\n  {C.YELLOW}Installed but could not load service: {result.stderr}{C.RESET}")
+            print(f"  Try running manually: {C.BOLD}patchverify --serve{C.RESET}\n")
+
+    elif sys.platform == 'win32':
+        import subprocess
+        cmd = (
+            f'schtasks /create /tn "PatchVerifyServer" /tr '
+            f'"{python_exe} -c \\"from server.app import app; app.run(host=\'0.0.0.0\', port=8080)\\"" '
+            f'/sc onlogon /rl limited /f'
+        )
+        result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+        if result.returncode == 0:
+            print(f"\n  {C.GREEN}✓ Scheduled task created — dashboard auto-starts on login.{C.RESET}")
+            print(f"  Dashboard: {C.CYAN}http://localhost:8080{C.RESET}\n")
+        else:
+            print(f"\n  {C.YELLOW}Could not create scheduled task: {result.stderr}{C.RESET}\n")
+    else:
+        print(f"\n  {C.YELLOW}Auto-service not supported on this platform.{C.RESET}")
+        print(f"  Add this to your shell startup (~/.bashrc / ~/.zshrc):")
+        print(f"  {C.BOLD}patchverify --serve &{C.RESET}\n")
 
 
 def _check_registered():

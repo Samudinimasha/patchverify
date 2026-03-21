@@ -222,7 +222,13 @@ def _send_email(to, subject, body, smtp_host, smtp_port, smtp_user, smtp_pass):
         msg["Subject"] = subject
         msg.attach(MIMEText(body, "plain"))
 
-        ctx = ssl.create_default_context()
+        # Use certifi CA bundle to fix macOS SSL certificate errors
+        try:
+            import certifi
+            ctx = ssl.create_default_context(cafile=certifi.where())
+        except ImportError:
+            ctx = ssl.create_default_context()
+
         with smtplib.SMTP(smtp_host, smtp_port, timeout=15) as server:
             server.ehlo()
             server.starttls(context=ctx)

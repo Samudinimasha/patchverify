@@ -58,6 +58,23 @@ def get_stats():
 
     return jsonify(stats)
 
+@app.route('/api/profile')
+def get_profile():
+    """Get registered device profile"""
+    try:
+        from cli.config import load_config
+        config = load_config()
+        return jsonify({
+            "email":           config.get("email", "Not configured"),
+            "device_id":       config.get("device_id", ""),
+            "registered":      config.get("registered", ""),
+            "smtp_configured": bool(config.get("smtp", {}).get("host")),
+            "smtp_host":       config.get("smtp", {}).get("host", "Not configured"),
+        })
+    except Exception:
+        return jsonify({"email": "Not configured", "device_id": "", "smtp_configured": False})
+
+
 @app.route('/api/scan/<scan_id>')
 def get_scan_details(scan_id):
     """Get detailed information for a specific scan"""

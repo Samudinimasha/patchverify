@@ -20,8 +20,35 @@ try:
 except ImportError:
     JWT_AVAILABLE = False
 
-JWT_SECRET = "patchverify-local-secret-2026"
 TOKEN_EXPIRY_DAYS = 365
+
+
+def _get_jwt_secret():
+    """Return the JWT secret, generating and persisting a random one on first use."""
+    config = load_config()
+    if "jwt_secret" in config:
+        return _deobfuscate_raw(config["jwt_secret"])
+    # First run — generate a cryptographically random 32-byte secret
+    import secrets
+    secret = secrets.token_hex(32)
+    config["jwt_secret"] = _obfuscate_raw(secret)
+    save_config(config)
+    return secret
+
+
+def _obfuscate_raw(s):
+    key = b"patchverify"
+    b = s.encode()
+    return bytes(x ^ key[i % len(key)] for i, x in enumerate(b)).hex()
+
+
+def _deobfuscate_raw(h):
+    try:
+        key = b"patchverify"
+        b = bytes.fromhex(h)
+        return bytes(x ^ key[i % len(key)] for i, x in enumerate(b)).decode()
+    except Exception:
+        return ""
 
 
 def is_registered():
@@ -241,6 +268,7 @@ def _send_email(to, subject, body, smtp_host, smtp_port, smtp_user, smtp_pass):
 
 
 def _generate_token(email, device_id):
+    secret = _get_jwt_secret()
     if JWT_AVAILABLE:
         payload = {
             "email":     email,
@@ -248,21 +276,14 @@ def _generate_token(email, device_id):
             "exp":       datetime.datetime.utcnow() + datetime.timedelta(days=TOKEN_EXPIRY_DAYS),
             "iat":       datetime.datetime.utcnow(),
         }
-        return jwt.encode(payload, JWT_SECRET, algorithm="HS256")
-    raw = f"{email}:{device_id}:{JWT_SECRET}"
+        return jwt.encode(payload, secret, algorithm="HS256")
+    raw = f"{email}:{device_id}:{secret}"
     return hashlib.sha256(raw.encode()).hexdigest()
 
 
 def _obfuscate(s):
-    key = b"patchverify"
-    b = s.encode()
-    return bytes(x ^ key[i % len(key)] for i, x in enumerate(b)).hex()
+    return _obfuscate_raw(s)
 
 
 def _deobfuscate(h):
-    try:
-        key = b"patchverify"
-        b = bytes.fromhex(h)
-        return bytes(x ^ key[i % len(key)] for i, x in enumerate(b)).decode()
-    except Exception:
-        return ""
+    return _deobfuscate_raw(h)

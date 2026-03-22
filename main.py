@@ -244,9 +244,10 @@ def _check_registered():
 
 def _get_config_token():
     try:
-        from cli.auth import load_config
+        from cli.auth import load_config, _deobfuscate_raw
         cfg = load_config()
-        return cfg.get("github_token")
+        raw = cfg.get("github_token")
+        return _deobfuscate_raw(raw) if raw else None
     except Exception:
         return None
 

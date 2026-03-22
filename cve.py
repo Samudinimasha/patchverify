@@ -9,15 +9,33 @@ from cli.config import NVD_BASE, OSV_BASE, C
 from cli.streamer import emit
 
 
+_last_nvd_call = 0.0  # timestamp of last NVD request
+
+
 def query_nvd(app_name: str, version: str) -> list[dict]:
     """Query NVD for CVEs affecting app_name at version."""
+    global _last_nvd_call
+    elapsed = time.time() - _last_nvd_call
+    if elapsed < 6.0:
+        time.sleep(6.0 - elapsed)
+
     emit(f"  {C.GRAY}Querying NVD for '{app_name} {version}'...{C.RESET}")
     try:
+        _last_nvd_call = time.time()
         r = requests.get(
             NVD_BASE,
             params={"keywordSearch": f"{app_name} {version}", "resultsPerPage": 50},
             timeout=15
         )
+        if r.status_code == 429:
+            emit(f"  {C.YELLOW}NVD rate limit hit — waiting 30s...{C.RESET}")
+            time.sleep(30)
+            _last_nvd_call = time.time()
+            r = requests.get(
+                NVD_BASE,
+                params={"keywordSearch": f"{app_name} {version}", "resultsPerPage": 50},
+                timeout=15
+            )
         r.raise_for_status()
         vulns = r.json().get("vulnerabilities", [])
         return [_parse_nvd_item(v) for v in vulns]

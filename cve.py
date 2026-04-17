@@ -9,36 +9,37 @@ from cli.config import NVD_BASE, OSV_BASE, C
 from cli.streamer import emit
 
 
-_last_nvd_call = 0.0  # timestamp of last NVD request
-
-
 def query_nvd(app_name: str, version: str) -> list[dict]:
-    """Query NVD for CVEs affecting app_name at version."""
-    global _last_nvd_call
-    elapsed = time.time() - _last_nvd_call
-    if elapsed < 6.0:
-        time.sleep(6.0 - elapsed)
-
+    """Query NVD for CVEs affecting app_name at version.
+    Searches by package name only — version filtering happens via CPE ranges.
+    """
     emit(f"  {C.GRAY}Querying NVD for '{app_name} {version}'...{C.RESET}")
     try:
-        _last_nvd_call = time.time()
         r = requests.get(
             NVD_BASE,
-            params={"keywordSearch": f"{app_name} {version}", "resultsPerPage": 50},
+            params={"keywordSearch": app_name, "resultsPerPage": 50},
             timeout=15
         )
-        if r.status_code == 429:
-            emit(f"  {C.YELLOW}NVD rate limit hit — waiting 30s...{C.RESET}")
-            time.sleep(30)
-            _last_nvd_call = time.time()
-            r = requests.get(
-                NVD_BASE,
-                params={"keywordSearch": f"{app_name} {version}", "resultsPerPage": 50},
-                timeout=15
-            )
         r.raise_for_status()
         vulns = r.json().get("vulnerabilities", [])
-        return [_parse_nvd_item(v) for v in vulns]
+        # Parse all, then filter to those that actually affect this version
+        all_cves = [_parse_nvd_item(v) for v in vulns]
+        relevant = []
+        for cve in all_cves:
+            fi = cve.get("fixed_in")
+            ab = cve.get("affected_below")
+            if fi or ab:
+                # Only include if version is in the vulnerable range
+                try:
+                    v = Version(version)
+                    if fi and v < Version(fi):
+                        relevant.append(cve)
+                    elif ab and v < Version(ab):
+                        relevant.append(cve)
+                except InvalidVersion:
+                    relevant.append(cve)
+            # NVD entries without range data are too noisy — skip
+        return relevant
     except requests.exceptions.ConnectionError:
         emit(f"  {C.RED}Cannot reach NVD API — check internet connection.{C.RESET}")
         return []
@@ -48,8 +49,13 @@ def query_nvd(app_name: str, version: str) -> list[dict]:
 
 
 def query_osv(app_name: str, version: str, ecosystem: str = None) -> list[dict]:
-    """Query OSV.dev for vulnerabilities. Much cleaner version ranges than NVD."""
+    """Query OSV.dev for vulnerabilities. Tries all ecosystems if none provided."""
+    # If no ecosystem, try both PyPI and npm
     if not ecosystem:
+        for eco in ["PyPI", "npm"]:
+            results = query_osv(app_name, version, eco)
+            if results:
+                return results
         return []
 
     emit(f"  {C.GRAY}Querying OSV.dev for '{app_name}' in {ecosystem}...{C.RESET}")

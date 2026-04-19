@@ -9,7 +9,7 @@ import time
 import sys
 
 from cli.config       import C, SEVERITY_COLOR, HISTORY_FILE
-from cli.streamer     import emit, reset_stream, banner, section, verdict_line
+from cli.streamer     import emit, reset_stream, banner, section, verdict_line, init_stream, update_stream, complete_stream
 from extractor        import fetch_release_notes, extract_promises
 from cve              import query_nvd, query_osv, check_version_fixed, detect_ecosystem
 from differ           import diff_versions, file_changed_for_promise
@@ -26,6 +26,7 @@ def run_scan(app_name: str, old_version: str, new_version: str,
     started = datetime.datetime.utcnow().isoformat()
 
     reset_stream()
+    init_stream(scan_id, app_name, old_version, new_version)
     banner()
 
     emit(f"  {C.BOLD}Scan ID   :{C.RESET} {scan_id}")
@@ -35,6 +36,7 @@ def run_scan(app_name: str, old_version: str, new_version: str,
     emit(f"  {C.BOLD}Started   :{C.RESET} {started}\n")
 
     # ─────────────────────────────────────────────────────────────────────────
+    update_stream(scan_id, status="scanning", progress=10, step="Phase 1 — Promise Extraction")
     section("PHASE 1 — PROMISE EXTRACTION")
     # ─────────────────────────────────────────────────────────────────────────
 
@@ -67,6 +69,7 @@ def run_scan(app_name: str, old_version: str, new_version: str,
     emit("")
 
     # ─────────────────────────────────────────────────────────────────────────
+    update_stream(scan_id, status="scanning", progress=25, step="Phase 2 — CVE Lookup")
     section("PHASE 2 — CVE LOOKUP")
     # ─────────────────────────────────────────────────────────────────────────
 
@@ -129,6 +132,7 @@ def run_scan(app_name: str, old_version: str, new_version: str,
         return _save_scan(scan_id, app_name, old_version, new_version, started, [], [], 0)
 
     # ─────────────────────────────────────────────────────────────────────────
+    update_stream(scan_id, status="scanning", progress=50, step="Phase 3 — File Diff")
     section("PHASE 3 — STATIC FILE DIFF")
     # ─────────────────────────────────────────────────────────────────────────
 
@@ -158,6 +162,7 @@ def run_scan(app_name: str, old_version: str, new_version: str,
         emit(f"{C.GRAY}[~] File diff skipped — only supported for PyPI and npm packages.{C.RESET}")
 
     # ─────────────────────────────────────────────────────────────────────────
+    update_stream(scan_id, status="scanning", progress=70, step="Phase 4 — Behavioral Probing")
     section("PHASE 4 — BEHAVIORAL PROBING")
     # ─────────────────────────────────────────────────────────────────────────
 
@@ -165,6 +170,7 @@ def run_scan(app_name: str, old_version: str, new_version: str,
         emit(f"{C.GRAY}[~] Behavioral probing skipped (--no-probe flag).{C.RESET}")
 
     # ─────────────────────────────────────────────────────────────────────────
+    update_stream(scan_id, status="scanning", progress=85, step="Phase 5 — Verdict per Promise")
     section("PHASE 5 — VERDICT PER PROMISE")
     # ─────────────────────────────────────────────────────────────────────────
 
@@ -269,8 +275,10 @@ def run_scan(app_name: str, old_version: str, new_version: str,
 
     emit(f"\n  {C.GRAY}Scan ID: {scan_id}  |  Dashboard: http://localhost:8080{C.RESET}\n")
 
-    return _save_scan(scan_id, app_name, old_version, new_version,
-                      started, verdicts, all_items, risk["score"], risk["label"])
+    result = _save_scan(scan_id, app_name, old_version, new_version,
+                        started, verdicts, all_items, risk["score"], risk["label"])
+    complete_stream(scan_id, result)
+    return result
 
 
 def _merge_cves(osv: list, nvd: list) -> list:
@@ -324,9 +332,21 @@ def _save_scan(scan_id, app, old_v, new_v, started, verdicts, items, risk_score,
         "fixed":      sum(1 for v in verdicts if v.get("status") == "FIXED"),
         "not_fixed":  sum(1 for v in verdicts if v.get("status") == "NOT_FIXED"),
         "unconfirmed":sum(1 for v in verdicts if v.get("status") == "UNCONFIRMED"),
-        "risk_score": risk_score,
-        "risk_label": risk_label,
-        "verdicts":   verdicts,
+        "risk_score":  risk_score,
+        "risk_label":  risk_label,
+        "verdicts":    verdicts,
+        "cve_details": [
+            {
+                "id":          v.get("id", ""),
+                "severity":    v.get("severity", "UNKNOWN"),
+                "score":       v.get("score"),
+                "description": v.get("description", ""),
+                "fixed":       v.get("status") == "FIXED",
+                "verdict":     v.get("status", "UNCONFIRMED"),
+                "confidence":  v.get("confidence", 0),
+            }
+            for v in verdicts
+        ],
     }
 
     history = []

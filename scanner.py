@@ -10,11 +10,11 @@ import sys
 
 from cli.config       import C, SEVERITY_COLOR, HISTORY_FILE
 from cli.streamer     import emit, reset_stream, banner, section, verdict_line
-from cli.extractor    import fetch_release_notes, extract_promises
-from cli.cve          import query_nvd, query_osv, check_version_fixed, detect_ecosystem
-from cli.differ       import diff_versions, file_changed_for_promise
-from cli.prober       import run_probe
-from cli.scorer       import score_promise, compute_risk_score
+from extractor        import fetch_release_notes, extract_promises
+from cve              import query_nvd, query_osv, check_version_fixed, detect_ecosystem
+from differ           import diff_versions, file_changed_for_promise
+from prober           import run_probe
+from scorer           import score_promise, compute_risk_score
 
 
 def run_scan(app_name: str, old_version: str, new_version: str,
@@ -251,7 +251,7 @@ def run_scan(app_name: str, old_version: str, new_version: str,
     else:
         emit(f"\n  {C.GREEN}{C.BOLD}✅ All checked promises appear to be fixed.{C.RESET}")
 
-    emit(f"\n  {C.GRAY}Scan ID: {scan_id}  |  Dashboard: http://localhost:5000{C.RESET}\n")
+    emit(f"\n  {C.GRAY}Scan ID: {scan_id}  |  Dashboard: http://localhost:8080{C.RESET}\n")
 
     return _save_scan(scan_id, app_name, old_version, new_version,
                       started, verdicts, all_items, risk["score"], risk["label"])

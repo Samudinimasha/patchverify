@@ -18,9 +18,18 @@ CONFIG_DIR = Path.home() / ".patchverify"
 CONFIG_FILE = CONFIG_DIR / "config.json"
 HISTORY_FILE = CONFIG_DIR / "history.json"
 
+SEVERITY_COLOR = {
+    "CRITICAL": '\033[91m',
+    "HIGH":     '\033[38;5;208m',
+    "MEDIUM":   '\033[93m',
+    "LOW":      '\033[96m',
+    "UNKNOWN":  '\033[90m',
+}
+
 # API Endpoints
-NVD_BASE = "https://services.nvd.nist.gov/rest/json/cves/2.0"
-OSV_BASE = "https://api.osv.dev/v1/query"
+NVD_BASE    = "https://services.nvd.nist.gov/rest/json/cves/2.0"
+OSV_BASE    = "https://api.osv.dev/v1/query"
+GITHUB_API  = "https://api.github.com"
 
 def ensure_config_dir():
     """Ensure config directory exists"""

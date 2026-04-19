@@ -6,6 +6,7 @@ import hashlib
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import zipfile
 import tarfile
@@ -48,8 +49,13 @@ def diff_versions(app_name: str, old_version: str, new_version: str, ecosystem: 
 def _download_pip(package: str, version: str, dest_dir: str) -> bool:
     """Download a pip package and extract it."""
     try:
+        pip_exe = sys.executable.replace("python", "pip").replace("python3", "pip3")
+        import shutil
+        pip_cmd = shutil.which("pip") or shutil.which("pip3") or [sys.executable, "-m", "pip"]
+        if isinstance(pip_cmd, str):
+            pip_cmd = [pip_cmd]
         result = subprocess.run(
-            ["pip", "download", f"{package}=={version}",
+            pip_cmd + ["download", f"{package}=={version}",
              "--no-deps", "--dest", dest_dir, "--quiet"],
             capture_output=True, text=True, timeout=60
         )

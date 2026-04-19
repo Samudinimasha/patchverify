@@ -67,5 +67,37 @@ def _write_stream(data):
         json.dump(data, f, indent=2)
 
 def emit(message):
-    """Print a message to console (used by CVE module)"""
+    """Print a message to console and append to stream events"""
     print(message)
+    stream_data = _read_stream()
+    if stream_data:
+        stream_data.setdefault("events", []).append({
+            "timestamp": datetime.now().isoformat(),
+            "message": message
+        })
+        _write_stream(stream_data)
+
+def reset_stream():
+    """Clear the current stream file"""
+    if STREAM_FILE.exists():
+        STREAM_FILE.unlink()
+
+def banner():
+    """Print PatchVerify banner"""
+    from .config import C
+    print(f"\n{C.CYAN}{C.BOLD}{'═'*60}{C.RESET}")
+    print(f"{C.CYAN}{C.BOLD}  PatchVerify — Patch Effectiveness Scanner{C.RESET}")
+    print(f"{C.CYAN}{C.BOLD}{'═'*60}{C.RESET}\n")
+
+def section(title: str):
+    """Print a section header"""
+    from .config import C
+    print(f"\n{C.BOLD}{C.CYAN}── {title} {'─' * max(0, 45 - len(title))}{C.RESET}")
+
+def verdict_line(item_id: str, status: str, confidence: int, detail: str):
+    """Print a formatted verdict line"""
+    from .config import C
+    icons = {"FIXED": f"{C.GREEN}✅ FIXED", "NOT_FIXED": f"{C.RED}❌ NOT FIXED", "UNCONFIRMED": f"{C.YELLOW}⚠  UNCONFIRMED"}
+    icon = icons.get(status, f"{C.GRAY}─  {status}")
+    print(f"  {icon}  {C.BOLD}{item_id}{C.RESET}  confidence: {confidence}%")
+    print(f"  {C.GRAY}{detail[:120]}{C.RESET}")

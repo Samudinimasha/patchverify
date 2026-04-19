@@ -82,7 +82,8 @@ Examples:
             or _get_config_token()
         )
 
-        from cli.scanner import run_scan
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from scanner import run_scan
         result = run_scan(
             app_name=args.app,
             old_version=args.old,

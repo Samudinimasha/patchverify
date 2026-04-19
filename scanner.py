@@ -85,6 +85,11 @@ def run_scan(app_name: str, old_version: str, new_version: str,
     # Merge, deduplicate by CVE ID
     all_cves = _merge_cves(osv_cves, nvd_cves)
 
+    # Infer bug class from description for behavioral probing
+    for cve in all_cves:
+        if not cve.get("bug_class"):
+            cve["bug_class"] = _infer_bug_class(cve.get("description", ""))
+
     # Add CVEs from release notes promises as stubs if not already present
     existing_ids = {c["id"] for c in all_cves}
     for p in promises:
@@ -286,6 +291,24 @@ def _merge_cves(osv: list, nvd: list) -> list:
                 existing["score"]    = cve["score"]
                 existing["severity"] = cve["severity"]
     return merged
+
+
+def _infer_bug_class(description: str) -> str | None:
+    """Infer a probe bug_class from CVE description keywords."""
+    desc = description.lower()
+    if any(k in desc for k in ["buffer overflow", "heap overflow", "stack overflow", "oversized", "out-of-bounds write"]):
+        return "buffer_overflow"
+    if any(k in desc for k in ["memory leak", "resource exhaustion", "memory consumption"]):
+        return "memory_leak"
+    if any(k in desc for k in ["injection", "sql injection", "command injection", "xss", "cross-site", "input validation", "unsanitized", "improper input"]):
+        return "input_validation"
+    if any(k in desc for k in ["integer overflow", "integer wrap", "arithmetic overflow"]):
+        return "integer_overflow"
+    if any(k in desc for k in ["denial of service", "dos", "crash", "infinite loop", "hang", "cpu exhaustion"]):
+        return "denial_of_service"
+    if any(k in desc for k in ["header", "redirect", "ssrf", "forgery", "leak", "disclosure", "bypass"]):
+        return "input_validation"
+    return None
 
 
 def _save_scan(scan_id, app, old_v, new_v, started, verdicts, items, risk_score, risk_label="NONE"):

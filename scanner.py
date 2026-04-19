@@ -134,8 +134,19 @@ def run_scan(app_name: str, old_version: str, new_version: str,
             changed = diff_result.get("changed_count", 0)
             total   = diff_result.get("total_files", 0)
             emit(f"{C.GREEN}[✓] File diff complete: {changed}/{total} files changed between versions{C.RESET}")
-            if diff_result.get("changed"):
-                emit(f"{C.GRAY}    Changed: {', '.join(diff_result['changed'][:5])}{C.RESET}")
+            emit(f"{C.GRAY}{'─'*60}{C.RESET}")
+            emit(f"{C.BOLD}  {'File':<38} {'SHA-256 (old)':<14} {'SHA-256 (new)':<14}{C.RESET}")
+            emit(f"{C.GRAY}{'─'*60}{C.RESET}")
+            hash_details = diff_result.get("hash_details", {})
+            for fname in diff_result.get("changed", [])[:10]:
+                old_h, new_h = hash_details.get(fname, ("", ""))
+                short = fname if len(fname) <= 37 else "…" + fname[-36:]
+                emit(f"  {C.YELLOW}{short:<38}{C.RESET} {C.GRAY}{old_h[:12]:<14}{C.RESET} {C.GREEN}{new_h[:12]:<14}{C.RESET}")
+            if diff_result.get("added"):
+                emit(f"\n{C.GREEN}  + Added   ({len(diff_result['added'])}): {', '.join(diff_result['added'][:4])}{C.RESET}")
+            if diff_result.get("removed"):
+                emit(f"{C.RED}  - Removed ({len(diff_result['removed'])}): {', '.join(diff_result['removed'][:4])}{C.RESET}")
+            emit(f"{C.GRAY}{'─'*60}{C.RESET}")
         else:
             emit(f"{C.YELLOW}[~] File diff unavailable: {diff_result.get('reason')}{C.RESET}")
     else:

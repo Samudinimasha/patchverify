@@ -153,6 +153,11 @@ def _compare_hashes(old: dict, new: dict) -> dict:
         else:
             removed.append(f)
 
+    # Build hash detail for changed files: {filename: (old_sha256, new_sha256)}
+    hash_details = {
+        f: (old[f], new[f]) for f in changed if f in old and f in new
+    }
+
     return {
         "available":       True,
         "changed":         changed,
@@ -162,6 +167,7 @@ def _compare_hashes(old: dict, new: dict) -> dict:
         "total_files":     len(all_files),
         "changed_count":   len(changed),
         "unchanged_count": len(unchanged),
+        "hash_details":    hash_details,
     }
 
 

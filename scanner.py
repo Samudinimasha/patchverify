@@ -166,8 +166,56 @@ def run_scan(app_name: str, old_version: str, new_version: str,
     section("PHASE 4 — BEHAVIORAL PROBING")
     # ─────────────────────────────────────────────────────────────────────────
 
+    probe_cache = {}  # item_id -> probe_result
+
     if skip_probe:
         emit(f"{C.GRAY}[~] Behavioral probing skipped (--no-probe flag).{C.RESET}")
+    elif ecosystem not in ("PyPI", "npm"):
+        emit(f"{C.GRAY}[~] Behavioral probing not supported for this ecosystem.{C.RESET}")
+    else:
+        probeable = [item for item in all_items if item.get("bug_class")]
+        if not probeable:
+            emit(f"{C.YELLOW}[~] No probeable bug classes inferred from CVE descriptions.{C.RESET}")
+        else:
+            emit(f"{C.CYAN}[~] Running behavioral probes for {len(probeable)} item(s)...{C.RESET}\n")
+            for item in probeable:
+                item_id   = item.get("id", "?")
+                bug_class = item.get("bug_class")
+                emit(f"  {C.BOLD}{item_id}{C.RESET}  {C.GRAY}bug class: {bug_class}{C.RESET}")
+                emit(f"  {C.GRAY}  → Installing v{old_version} and v{new_version} in isolated envs...{C.RESET}")
+
+                new_probe = run_probe(app_name, new_version, bug_class, ecosystem)
+                old_probe = run_probe(app_name, old_version, bug_class, ecosystem)
+
+                if new_probe.get("ran") and old_probe.get("ran"):
+                    old_passed = old_probe.get("passed")
+                    new_passed = new_probe.get("passed")
+                    if old_passed is False and new_passed is True:
+                        probe_result = {
+                            "ran":     True,
+                            "passed":  True,
+                            "message": f"Old v{old_version} failed probe, new v{new_version} passed — fix confirmed."
+                        }
+                        emit(f"  {C.GREEN}  ✅ {probe_result['message']}{C.RESET}\n")
+                    elif new_passed is False:
+                        probe_result = {
+                            "ran":     True,
+                            "passed":  False,
+                            "message": f"New v{new_version} still fails {bug_class} probe — fix not effective."
+                        }
+                        emit(f"  {C.RED}  ❌ {probe_result['message']}{C.RESET}\n")
+                    else:
+                        probe_result = {
+                            "ran":     True,
+                            "passed":  None,
+                            "message": f"Inconclusive (old: {old_probe.get('result','?')}, new: {new_probe.get('result','?')})."
+                        }
+                        emit(f"  {C.YELLOW}  ⚠  {probe_result['message']}{C.RESET}\n")
+                else:
+                    probe_result = new_probe if new_probe.get("ran") else old_probe
+                    emit(f"  {C.GRAY}  ─  {probe_result.get('message') or probe_result.get('reason','')}{C.RESET}\n")
+
+                probe_cache[item_id] = probe_result
 
     # ─────────────────────────────────────────────────────────────────────────
     update_stream(scan_id, status="scanning", progress=85, step="Phase 5 — Verdict per Promise")
@@ -179,7 +227,6 @@ def run_scan(app_name: str, old_version: str, new_version: str,
     for item in all_items:
         is_cve      = "severity" in item
         item_id     = item.get("id", "?")
-        bug_class   = item.get("bug_class")
         description = item.get("description", "")
 
         emit(f"{C.BOLD}{'─'*58}{C.RESET}")
@@ -203,38 +250,8 @@ def run_scan(app_name: str, old_version: str, new_version: str,
         diff_check = file_changed_for_promise(diff_result, item)
         emit(f"  {C.GRAY}File diff  : {diff_check.get('reason','')[:80]}{C.RESET}")
 
-        # Signal 3: Behavioral probe
-        probe_result = {"ran": False, "reason": "Not applicable."}
-        if not skip_probe and ecosystem in ("PyPI", "npm") and bug_class:
-            emit(f"  {C.GRAY}Probe      : Running {bug_class} probe...{C.RESET}")
-            # Run on new version (should pass) and old version (should fail)
-            new_probe = run_probe(app_name, new_version, bug_class, ecosystem)
-            old_probe = run_probe(app_name, old_version, bug_class, ecosystem)
-
-            if new_probe.get("ran") and old_probe.get("ran"):
-                old_passed = old_probe.get("passed")
-                new_passed = new_probe.get("passed")
-                if old_passed is False and new_passed is True:
-                    probe_result = {
-                        "ran":     True,
-                        "passed":  True,
-                        "message": f"Old v{old_version} failed probe, new v{new_version} passed — fix confirmed."
-                    }
-                elif new_passed is False:
-                    probe_result = {
-                        "ran":     True,
-                        "passed":  False,
-                        "message": f"New v{new_version} still fails probe — fix not effective."
-                    }
-                else:
-                    probe_result = {
-                        "ran":     True,
-                        "passed":  None,
-                        "message": f"Probe results inconclusive (old: {old_probe.get('result')}, new: {new_probe.get('result')})."
-                    }
-            else:
-                probe_result = new_probe if new_probe.get("ran") else old_probe
-
+        # Signal 3: Use cached probe result from Phase 4
+        probe_result = probe_cache.get(item_id, {"ran": False, "reason": "Not applicable."})
         emit(f"  {C.GRAY}Probe      : {probe_result.get('message') or probe_result.get('reason','')}{C.RESET}")
 
         # Score
@@ -282,7 +299,9 @@ def run_scan(app_name: str, old_version: str, new_version: str,
 
 
 def _merge_cves(osv: list, nvd: list) -> list:
-    """Merge OSV and NVD results, preferring OSV for version ranges (more accurate)."""
+    """Merge OSV and NVD results. When sources conflict on fixed_in version,
+    use the more conservative (higher) version — REQ 2.6."""
+    from packaging.version import Version, InvalidVersion
     seen   = {}
     merged = []
     for cve in osv + nvd:
@@ -291,10 +310,17 @@ def _merge_cves(osv: list, nvd: list) -> list:
             seen[cid] = cve
             merged.append(cve)
         else:
-            # Prefer OSV version data
             existing = seen[cid]
-            if not existing.get("fixed_in") and cve.get("fixed_in"):
+            # REQ 2.6: when both sources have fixed_in, use the more conservative (higher) version
+            if existing.get("fixed_in") and cve.get("fixed_in"):
+                try:
+                    if Version(cve["fixed_in"]) > Version(existing["fixed_in"]):
+                        existing["fixed_in"] = cve["fixed_in"]  # higher = more conservative
+                except InvalidVersion:
+                    pass
+            elif not existing.get("fixed_in") and cve.get("fixed_in"):
                 existing["fixed_in"] = cve["fixed_in"]
+            # Prefer higher CVSS score for severity
             if not existing.get("score") and cve.get("score"):
                 existing["score"]    = cve["score"]
                 existing["severity"] = cve["severity"]

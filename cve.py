@@ -12,40 +12,52 @@ from cli.streamer import emit
 def query_nvd(app_name: str, version: str) -> list[dict]:
     """Query NVD for CVEs affecting app_name at version.
     Searches by package name only — version filtering happens via CPE ranges.
+    Implements exponential backoff with max 3 retries for rate limiting (REQ 2.3, 2.4).
     """
     emit(f"  {C.GRAY}Querying NVD for '{app_name} {version}'...{C.RESET}")
-    try:
-        r = requests.get(
-            NVD_BASE,
-            params={"keywordSearch": app_name, "resultsPerPage": 50},
-            timeout=15
-        )
-        r.raise_for_status()
-        vulns = r.json().get("vulnerabilities", [])
-        # Parse all, then filter to those that actually affect this version
-        all_cves = [_parse_nvd_item(v) for v in vulns]
-        relevant = []
-        for cve in all_cves:
-            fi = cve.get("fixed_in")
-            ab = cve.get("affected_below")
-            if fi or ab:
-                # Only include if version is in the vulnerable range
-                try:
-                    v = Version(version)
-                    if fi and v < Version(fi):
+    max_retries = 3
+    backoff = 6  # seconds — NVD allows 5 req/30s unauthenticated
+    for attempt in range(max_retries):
+        try:
+            r = requests.get(
+                NVD_BASE,
+                params={"keywordSearch": app_name, "resultsPerPage": 50},
+                timeout=15
+            )
+            if r.status_code in (403, 429):
+                wait = backoff * (2 ** attempt)
+                emit(f"  {C.YELLOW}NVD rate limit hit — waiting {wait}s (attempt {attempt+1}/{max_retries})...{C.RESET}")
+                time.sleep(wait)
+                continue
+            r.raise_for_status()
+            vulns = r.json().get("vulnerabilities", [])
+            all_cves = [_parse_nvd_item(v) for v in vulns]
+            relevant = []
+            for cve in all_cves:
+                fi = cve.get("fixed_in")
+                ab = cve.get("affected_below")
+                if fi or ab:
+                    try:
+                        v = Version(version)
+                        if fi and v < Version(fi):
+                            relevant.append(cve)
+                        elif ab and v < Version(ab):
+                            relevant.append(cve)
+                    except InvalidVersion:
                         relevant.append(cve)
-                    elif ab and v < Version(ab):
-                        relevant.append(cve)
-                except InvalidVersion:
-                    relevant.append(cve)
-            # NVD entries without range data are too noisy — skip
-        return relevant
-    except requests.exceptions.ConnectionError:
-        emit(f"  {C.RED}Cannot reach NVD API — check internet connection.{C.RESET}")
-        return []
-    except Exception as e:
-        emit(f"  {C.YELLOW}NVD query error: {e}{C.RESET}")
-        return []
+            return relevant
+        except requests.exceptions.ConnectionError:
+            emit(f"  {C.RED}Cannot reach NVD API — check internet connection.{C.RESET}")
+            return []
+        except Exception as e:
+            if attempt < max_retries - 1:
+                wait = backoff * (2 ** attempt)
+                emit(f"  {C.YELLOW}NVD query error: {e} — retrying in {wait}s...{C.RESET}")
+                time.sleep(wait)
+            else:
+                emit(f"  {C.YELLOW}NVD query failed after {max_retries} attempts: {e}{C.RESET}")
+                return []
+    return []
 
 
 def query_osv(app_name: str, version: str, ecosystem: str = None) -> list[dict]:

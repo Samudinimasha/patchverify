@@ -25,12 +25,12 @@ Examples:
   patchverify --app requests --old 2.28.0 --new 2.31.0
   patchverify --app pillow --old 9.5.0 --new 10.0.0 --no-probe
   patchverify --history
-  patchverify --serve
+  patchverify --dashboard
         """
     )
 
     parser.add_argument("--setup",           action="store_true", help="First-time setup: register device via email OTP")
-    parser.add_argument("--serve",           action="store_true", help="Start the web dashboard server")
+    parser.add_argument("--serve",     "--dashboard", action="store_true", dest="serve", help="Start the web dashboard server")
     parser.add_argument("--history",         action="store_true", help="Show past scan history")
     parser.add_argument("--install-service", action="store_true", help="Install dashboard as a background service (auto-starts on login)")
     parser.add_argument("--app",      type=str, help="App/package name to scan")

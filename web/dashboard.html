@@ -195,6 +195,62 @@
             align-items: center;
             gap: 25px;
             flex-wrap: wrap;
+            cursor: pointer;
+            transition: box-shadow 0.2s, transform 0.15s;
+        }
+        .profile-panel:hover {
+            box-shadow: 0 12px 40px rgba(102,126,234,0.25);
+            transform: translateY(-1px);
+        }
+        .profile-modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        .profile-modal-overlay.open { display: flex; }
+        .profile-modal {
+            background: #fff;
+            border-radius: 16px;
+            padding: 36px 40px;
+            width: 480px;
+            max-width: 95vw;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+            position: relative;
+        }
+        .profile-modal h2 {
+            font-size: 1.4em;
+            margin-bottom: 24px;
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .profile-modal-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 0;
+            border-bottom: 1px solid #f3f4f6;
+            font-size: 0.95em;
+        }
+        .profile-modal-row:last-of-type { border-bottom: none; }
+        .profile-modal-label { color: #6b7280; font-weight: 500; }
+        .profile-modal-value { color: #1f2937; font-weight: 600; word-break: break-all; text-align: right; max-width: 60%; }
+        .profile-modal-close {
+            position: absolute;
+            top: 16px; right: 20px;
+            background: none; border: none;
+            font-size: 1.5em; cursor: pointer; color: #9ca3af;
+        }
+        .profile-modal-close:hover { color: #1f2937; }
+        .profile-modal-actions {
+            margin-top: 24px;
+            display: flex;
+            gap: 12px;
+            justify-content: flex-end;
         }
 
         .profile-avatar {
@@ -408,8 +464,8 @@
             <p class="subtitle">Real-time patch verification and vulnerability tracking</p>
         </header>
 
-        <!-- Profile Panel -->
-        <div class="profile-panel" id="profile-panel">
+        <!-- Profile Panel (clickable) -->
+        <div class="profile-panel" id="profile-panel" onclick="openProfileModal()" title="Click to view full profile">
             <div class="profile-avatar">👤</div>
             <div class="profile-info">
                 <div class="profile-email" id="profile-email">Loading...</div>
@@ -420,7 +476,43 @@
                 <span class="profile-badge badge-smtp"   id="badge-smtp"       style="display:none">✉ Email notifications on</span>
                 <span class="profile-badge badge-nosmtp" id="badge-nosmtp"     style="display:none">✉ No SMTP configured</span>
             </div>
-            <button class="btn-delete" onclick="showDeleteConfirm()">Delete Account</button>
+            <span style="margin-left:auto;color:#9ca3af;font-size:0.85em;">View profile →</span>
+        </div>
+
+        <!-- Profile Modal -->
+        <div class="profile-modal-overlay" id="profile-modal-overlay" onclick="closeProfileModal(event)">
+            <div class="profile-modal">
+                <button class="profile-modal-close" onclick="closeProfileModal()">&times;</button>
+                <h2>👤 Device Profile</h2>
+                <div class="profile-modal-row">
+                    <span class="profile-modal-label">Email</span>
+                    <span class="profile-modal-value" id="pm-email">—</span>
+                </div>
+                <div class="profile-modal-row">
+                    <span class="profile-modal-label">Device ID</span>
+                    <span class="profile-modal-value" id="pm-device-id">—</span>
+                </div>
+                <div class="profile-modal-row">
+                    <span class="profile-modal-label">Registered</span>
+                    <span class="profile-modal-value" id="pm-registered">—</span>
+                </div>
+                <div class="profile-modal-row">
+                    <span class="profile-modal-label">SMTP Host</span>
+                    <span class="profile-modal-value" id="pm-smtp-host">—</span>
+                </div>
+                <div class="profile-modal-row">
+                    <span class="profile-modal-label">Email Notifications</span>
+                    <span class="profile-modal-value" id="pm-smtp-status">—</span>
+                </div>
+                <div class="profile-modal-row">
+                    <span class="profile-modal-label">Auth Token</span>
+                    <span class="profile-modal-value" id="pm-token">—</span>
+                </div>
+                <div class="profile-modal-actions">
+                    <button class="btn-delete" onclick="closeProfileModal();showDeleteConfirm();" style="margin:0;">Delete Account</button>
+                    <button onclick="closeProfileModal()" style="padding:10px 22px;border-radius:8px;border:1px solid #d1d5db;background:#fff;cursor:pointer;font-size:0.95em;">Close</button>
+                </div>
+            </div>
         </div>
 
         <!-- Delete confirmation overlay -->
@@ -467,6 +559,25 @@
 
             <div class="card">
                 <h2 class="card-title">📊 Scan History</h2>
+                <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
+                    <input id="filter-app" type="text" placeholder="Filter by package name..."
+                        oninput="applyHistoryFilter()"
+                        style="flex:1;min-width:140px;padding:7px 12px;border-radius:8px;border:1px solid #d1d5db;font-size:0.9em;"/>
+                    <input id="filter-date" type="date" title="Filter by date"
+                        onchange="applyHistoryFilter()"
+                        style="padding:7px 12px;border-radius:8px;border:1px solid #d1d5db;font-size:0.9em;"/>
+                    <select id="filter-risk" onchange="applyHistoryFilter()"
+                        style="padding:7px 12px;border-radius:8px;border:1px solid #d1d5db;font-size:0.9em;">
+                        <option value="">All risk levels</option>
+                        <option value="CRITICAL">Critical</option>
+                        <option value="HIGH">High</option>
+                        <option value="MEDIUM">Medium</option>
+                        <option value="LOW">Low</option>
+                        <option value="NONE">None</option>
+                    </select>
+                    <button onclick="clearHistoryFilter()"
+                        style="padding:7px 12px;border-radius:8px;border:none;background:#e5e7eb;cursor:pointer;font-size:0.9em;">Clear</button>
+                </div>
                 <div id="history-content" class="history-list">
                     <div class="no-data">No scan history available</div>
                 </div>
@@ -530,32 +641,58 @@
             }
         }
 
+        // All history records cached for client-side filtering (REQ 6.4)
+        let _allHistory = [];
+
+        function renderHistory(history) {
+            const historyContent = document.getElementById('history-content');
+            if (history.length === 0) {
+                historyContent.innerHTML = '<div class="no-data">No scan history available</div>';
+            } else {
+                historyContent.innerHTML = history.map(item => `
+                    <div class="history-item" onclick="showScanDetails('${item.scan_id}')">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                            <strong>${item.app}</strong>
+                            <span class="risk-badge risk-${(item.risk_label||'none').toLowerCase()}">${item.risk_label||'NONE'}</span>
+                        </div>
+                        <div style="color: #6b7280; font-size: 0.9em;">
+                            ${item.old_version} → ${item.new_version}
+                        </div>
+                        <div style="color: #6b7280; font-size: 0.85em; margin-top: 5px;">
+                            ${item.started ? item.started.slice(0,10) : ''} &nbsp;|&nbsp;
+                            Fixed: ${item.fixed}/${item.total} | Not Fixed: ${item.not_fixed} | Click for details
+                        </div>
+                    </div>
+                `).join('');
+            }
+        }
+
+        function applyHistoryFilter() {
+            const app   = document.getElementById('filter-app').value.trim().toLowerCase();
+            const date  = document.getElementById('filter-date').value;  // yyyy-mm-dd
+            const risk  = document.getElementById('filter-risk').value;
+            const filtered = _allHistory.filter(item => {
+                if (app  && !item.app.toLowerCase().includes(app)) return false;
+                if (date && !(item.started || '').startsWith(date))  return false;
+                if (risk && item.risk_label !== risk)                 return false;
+                return true;
+            });
+            renderHistory(filtered);
+        }
+
+        function clearHistoryFilter() {
+            document.getElementById('filter-app').value  = '';
+            document.getElementById('filter-date').value = '';
+            document.getElementById('filter-risk').value = '';
+            renderHistory(_allHistory);
+        }
+
         // Fetch and update history
         async function updateHistory() {
             try {
                 const response = await fetch('/api/history');
-                const history = await response.json();
-
-                const historyContent = document.getElementById('history-content');
-
-                if (history.length === 0) {
-                    historyContent.innerHTML = '<div class="no-data">No scan history available</div>';
-                } else {
-                    historyContent.innerHTML = history.map(item => `
-                        <div class="history-item" onclick="showScanDetails('${item.scan_id}')">
-                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                                <strong>${item.app}</strong>
-                                <span class="risk-badge risk-${item.risk_label.toLowerCase()}">${item.risk_label}</span>
-                            </div>
-                            <div style="color: #6b7280; font-size: 0.9em;">
-                                ${item.old_version} → ${item.new_version}
-                            </div>
-                            <div style="color: #6b7280; font-size: 0.85em; margin-top: 5px;">
-                                Fixed: ${item.fixed}/${item.total} | Not Fixed: ${item.not_fixed} | Click for details
-                            </div>
-                        </div>
-                    `).join('');
-                }
+                _allHistory = await response.json();
+                applyHistoryFilter();
             } catch (error) {
                 console.error('Error fetching history:', error);
             }
@@ -655,11 +792,15 @@
             }
         }
 
+        // Cached profile data for modal
+        let _profileData = {};
+
         // Fetch and update profile panel
         async function updateProfile() {
             try {
                 const response = await fetch('/api/profile');
                 const p = await response.json();
+                _profileData = p;
                 document.getElementById('profile-email').textContent = p.email || 'Not configured';
                 const shortId = p.device_id ? p.device_id.split('-')[0] + '...' : '—';
                 const regDate = p.registered ? new Date(p.registered).toLocaleDateString() : '';
@@ -678,6 +819,25 @@
             } catch (error) {
                 document.getElementById('profile-email').textContent = 'Not configured';
             }
+        }
+
+        function openProfileModal() {
+            const p = _profileData;
+            document.getElementById('pm-email').textContent        = p.email || 'Not configured';
+            document.getElementById('pm-device-id').textContent    = p.device_id || 'Not registered';
+            document.getElementById('pm-registered').textContent   = p.registered
+                ? new Date(p.registered).toLocaleString() : '—';
+            document.getElementById('pm-smtp-host').textContent    = p.smtp_host || 'Not configured';
+            document.getElementById('pm-smtp-status').textContent  = p.smtp_configured
+                ? '✅ Enabled' : '❌ Not configured';
+            document.getElementById('pm-token').textContent        = p.device_id
+                ? '✅ JWT token active (365-day expiry)' : '—';
+            document.getElementById('profile-modal-overlay').classList.add('open');
+        }
+
+        function closeProfileModal(e) {
+            if (e && e.target !== document.getElementById('profile-modal-overlay')) return;
+            document.getElementById('profile-modal-overlay').classList.remove('open');
         }
 
         // Initial load

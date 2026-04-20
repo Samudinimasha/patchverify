@@ -15,6 +15,8 @@ SEVERITY_WEIGHTS = {
 def score_promise(promise: dict, cve_check: dict, diff_check: dict, probe_result: dict) -> dict:
     """
     Combine all three signals into a final verdict + confidence score.
+    REQ 5.5: When a signal is unavailable, redistribute its weight proportionally
+    across the available signals rather than defaulting to zero.
 
     Signals:
       cve_check  : { fixed: True/False/None, method, detail }
@@ -25,48 +27,77 @@ def score_promise(promise: dict, cve_check: dict, diff_check: dict, probe_result
       { status, confidence, verdict_detail, signals }
     """
     signals = []
-    weights = []   # (weight, positive: bool)
+
+    # Track each signal: (base_weight, contribution: True/False/None, available: bool)
+    RAW = {"cve": 40, "diff": 35, "probe": 25}
+    contributions = {}  # signal_name -> (available, positive_or_none)
 
     # ── Signal 1: CVE version range ─────────────────────────────────────────
     cve_fixed = cve_check.get("fixed")
     if cve_fixed is True:
         signals.append(f"✅ CVE version range: {cve_check.get('detail', '')}")
-        weights.append((40, True))
+        contributions["cve"] = (True, True)
     elif cve_fixed is False:
         signals.append(f"❌ CVE version range: {cve_check.get('detail', '')}")
-        weights.append((40, False))
+        contributions["cve"] = (True, False)
     else:
         signals.append(f"⚠  CVE range: {cve_check.get('detail', 'No version range data in NVD/OSV.')}")
-        # No weight contribution — inconclusive
+        contributions["cve"] = (False, None)
 
     # ── Signal 2: File diff ──────────────────────────────────────────────────
     if diff_check.get("checked"):
         fc = diff_check.get("files_changed")
         if fc is True:
             signals.append(f"✅ File diff: {diff_check.get('reason', 'Relevant files changed.')}")
-            weights.append((35, True))
+            contributions["diff"] = (True, True)
         elif fc is False:
             signals.append(f"❌ File diff: {diff_check.get('reason', 'No relevant files changed.')}")
-            weights.append((35, False))
+            contributions["diff"] = (True, False)
         else:
             signals.append(f"⚠  File diff: {diff_check.get('reason', 'Change scope unclear.')}")
-            weights.append((15, True))  # partial positive
+            contributions["diff"] = (True, None)  # inconclusive but available
     else:
         signals.append(f"─  File diff: {diff_check.get('reason', 'Not available.')}")
+        contributions["diff"] = (False, None)
 
     # ── Signal 3: Behavioral probe ───────────────────────────────────────────
     if probe_result.get("ran"):
         passed = probe_result.get("passed")
         if passed is True:
             signals.append(f"✅ Behavioral probe: {probe_result.get('message', 'Passed.')}")
-            weights.append((25, True))
+            contributions["probe"] = (True, True)
         elif passed is False:
             signals.append(f"❌ Behavioral probe: {probe_result.get('message', 'Failed.')}")
-            weights.append((25, False))
+            contributions["probe"] = (True, False)
         else:
             signals.append(f"⚠  Behavioral probe: {probe_result.get('message', 'Inconclusive.')}")
+            contributions["probe"] = (True, None)
     else:
         signals.append(f"─  Behavioral probe: {probe_result.get('reason', 'Not applicable.')}")
+        contributions["probe"] = (False, None)
+
+    # ── REQ 5.5: Redistribute weights from unavailable signals ───────────────
+    available   = {k for k, (avail, _) in contributions.items() if avail}
+    unavailable = {k for k, (avail, _) in contributions.items() if not avail}
+
+    if unavailable and available:
+        lost_weight  = sum(RAW[k] for k in unavailable)
+        avail_total  = sum(RAW[k] for k in available)
+        redistributed = {k: RAW[k] + lost_weight * (RAW[k] / avail_total) for k in available}
+    else:
+        redistributed = dict(RAW)
+
+    weights = []
+    for name in available:
+        _, positive = contributions[name]
+        w = redistributed[name]
+        if positive is True:
+            weights.append((w, True))
+        elif positive is False:
+            weights.append((w, False))
+        # None/inconclusive: partial positive (half weight)
+        else:
+            weights.append((w * 0.4, True))
 
     # ── Compute verdict ──────────────────────────────────────────────────────
     status, confidence = _compute_verdict(weights, cve_fixed)

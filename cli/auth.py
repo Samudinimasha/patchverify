@@ -1,6 +1,6 @@
 """Authentication and registration for PatchVerify — full OTP flow"""
 import json
-import random
+import secrets
 import hashlib
 import datetime
 import smtplib
@@ -118,7 +118,7 @@ We'll register your device and verify your email via OTP.
 
     smtp_cfg = {}
     if smtp_host and smtp_pass:
-        otp = str(random.randint(100000, 999999))
+        otp = str(secrets.randbelow(900000) + 100000)  # REQ 7.1: cryptographically random
         print(f"\n  {C.GRAY}Sending OTP to {email}...{C.RESET}")
 
         sent = _send_otp(email, otp, smtp_host, smtp_port, smtp_user, smtp_pass)
